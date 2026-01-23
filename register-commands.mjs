@@ -109,6 +109,21 @@ const commands = [
         .setDescription("Negative prompt")
         .setRequired(false)
     ),
+  new SlashCommandBuilder()
+    .setName("othello")
+    .setDescription("オセロを開始します（VS AI）")
+    .addStringOption(option =>
+      option
+        .setName("difficulty")
+        .setDescription("AIの強さ")
+        .addChoices(
+          { name: "弱め", value: "easy" },
+          { name: "普通", value: "normal" },
+          { name: "強め", value: "hard" },
+          { name: "最強", value: "max" }
+        )
+        .setRequired(false)
+    ),
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
