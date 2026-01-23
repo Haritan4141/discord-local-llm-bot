@@ -1,4 +1,4 @@
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import { Client, GatewayIntentBits, AttachmentBuilder } from 'discord.js';
 
 
@@ -100,13 +100,9 @@ function splitForDiscord(text, chunkSize = 1800) {
   return chunks.length ? chunks : ['(empty)'];
 }
 
-function isCommand(text) {
-  const c = text.trim();
-  return c === '!help' || c === '!pause' || c === '!resume' || c === '!reset';
-}
 
 // ======================
-// ★ !draw (AUTOMATIC1111) 画像生成
+// ★ draw (AUTOMATIC1111) 画像生成
 // ======================
 const SD_URL = (SD_WEBUI_URL || 'http://127.0.0.1:7860').replace(/\/$/, '');
 
@@ -115,40 +111,6 @@ function numEnv(v, def) {
   return Number.isFinite(n) ? n : def;
 }
 
-function parseDrawCommand(text) {
-  // 例: !draw a cute cat --w 512 --h 512 --steps 25 --cfg 7 --sampler "Euler a" --seed 123
-  const raw = text.trim();
-
-  const m = raw.match(/^!draw\s+([\s\S]+)$/i);
-  if (!m) return null;
-
-  const body = m[1].trim();
-  if (!body) return { prompt: '', opts: {} };
-
-  // 超軽量なオプションパーサ（--key value 形式だけ対応）
-  const tokens = body.match(/"[^"]+"|'[^']+'|\S+/g) || [];
-  const opts = {};
-  const promptParts = [];
-
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (t.startsWith('--')) {
-      const key = t.slice(2).toLowerCase();
-      const next = tokens[i + 1];
-      if (!next || next.startsWith('--')) {
-        opts[key] = true;
-      } else {
-        const val = next.replace(/^["']|["']$/g, '');
-        opts[key] = val;
-        i++;
-      }
-    } else {
-      promptParts.push(t.replace(/^["']|["']$/g, ''));
-    }
-  }
-
-  return { prompt: promptParts.join(' ').trim(), opts };
-}
 
 async function sdTxt2Img({ prompt, negativePrompt, width, height, steps, cfgScale, sampler, seed, batchSize }) {
   const payload = {
@@ -306,9 +268,6 @@ async function processQueue(channelId) {
       const name = item.name;
       const text = item.text || "";
 
-      // コマンドはここに来ない想定だが念のため
-      if (isCommand(text)) continue;
-
       // ★画像：message は添付から拾う / interaction は item.imageAtt を使う
       const imageAtt =
         item.kind === "interaction"
@@ -394,186 +353,10 @@ client.on('messageCreate', async (msg) => {
   if (!allowedChannelIds.has(msg.channelId)) return;
 
   const st = getState(msg.channelId);
-  const c = msg.content.trim();
 
-  // ---- コマンド ----
-  if (c === '!help') {
-    await msg.reply(
-      [
-        '🧠 **LLMbot コマンド一覧（即レス版）**',
-        '',
-        '• `!help` : このヘルプを表示',
-        '• `!status` : 状態表示',
-        '• `!persona <説明>` : 人格/口調の変更',
-        '• `!persona reset` : 元に戻す',
-        '• `!draw <プロンプト> [--w 512 --h 512 ...]` : 画像生成（Stable Diffusion WebUI）',
-        '• `!pause` : このチャンネルで黙る（停止）',
-        '• `!resume` : このチャンネルで再開',
-        '• `!reset` : このチャンネルの会話記憶リセット',
-        '',
-        'ℹ️ 反応条件:',
-        '• このチャンネルの各メッセージに即レスします（1発言=1返答）',
-        '• 画像添付があれば、画像も一緒にLLMへ渡します（※Vision対応モデル推奨）',
-      ].join('\n')
-    );
-    return;
-  }
-  if (c === '!status') {
-    const histLen = st.history?.length ?? 0;
-    const paused = !!st.paused;
-    const queueLen = st.queue?.length ?? 0;
+  const name = msg.member?.displayName || msg.author.username;
+  st.queue.push({ kind: "message", msg, name, text: msg.content });
 
-    const mode = st.queue
-      ? '即レス（1発言=1返答 / キュー処理）'
-      : '不明';
-
-    await msg.reply(
-      [
-        '📊 **LLMbot ステータス**',
-        `• paused: \`${paused}\``,
-        `• mode: ${mode}`,
-        `• model: \`${process.env.OLLAMA_MODEL}\``,
-        `• history: \`${histLen}\` messages`,
-        `• queue: \`${queueLen}\``,
-        `• channel: <#${msg.channelId}>`,
-      ].join('\n')
-    );
-    return;
-  }
-  if (c.startsWith('!persona')) {
-    const persona = c.replace(/^!persona\s*/i, '').trim();
-
-    if (!persona) {
-      await msg.reply(
-        [
-          '使い方: `!persona <人格/口調/ルール>`',
-          '例: `!persona あなたは落ち着いた関西弁の雑談相手。短めに返答し、質問で返して会話を続ける。`',
-          '',
-          '元に戻す: `!persona reset`',
-        ].join('\n')
-      );
-      return;
-    }
-
-    const base = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
-
-    if (persona.toLowerCase() === 'reset') {
-      if (st.history?.[0]?.role === 'system') {
-        st.history[0].content = base;
-      }
-      await msg.reply('✅ persona をデフォルトに戻したよ。必要なら `!reset` で会話履歴もリセットしてね。');
-      return;
-    }
-
-    const newSystem = [base, '', '--- persona override ---', persona].join('\n');
-
-    if (st.history?.[0]?.role === 'system') {
-      st.history[0].content = newSystem;
-    } else if (st.history) {
-      st.history.unshift({ role: 'system', content: newSystem });
-    }
-
-    await msg.reply(
-      [
-        '✅ persona を設定したよ。',
-        '反映は次の返答から。',
-        '※ “完全に雰囲気を切り替えたい”なら `!reset` もおすすめ。',
-      ].join('\n')
-    );
-    return;
-  }
-  // ---- !draw（画像生成） ----
-  if (c.startsWith('!draw')) {
-    if (st.paused) {
-      await msg.reply('いま paused 中だよ（`!resume` で再開）');
-      return;
-    }
-
-    const parsed = parseDrawCommand(c);
-    const prompt = parsed?.prompt || '';
-
-    if (!prompt) {
-      await msg.reply(
-        [
-          '使い方: `!draw <生成したい内容>`',
-          '例: `!draw idolmaster, mayuzumi fuyuko, cowboy shot,`',
-          //          'オプション例: `!draw 猫 --w 512 --h 512 --steps 25 --cfg 7 --sampler "Euler a"`',
-        ].join('\n')
-      );
-      return;
-    }
-
-    // envのデフォルト + コマンド上書き
-    const o = parsed.opts || {};
-    const width = numEnv(o.w ?? o.width ?? SD_WIDTH, 768);
-    const height = numEnv(o.h ?? o.height ?? SD_HEIGHT, 768);
-    const steps = numEnv(o.steps ?? SD_STEPS, 20);
-    const cfgScale = numEnv(o.cfg ?? o.cfgscale ?? SD_CFG_SCALE, 7);
-    const sampler = String(o.sampler ?? SD_SAMPLER ?? 'DPM++ 2M Karras');
-    const seed = o.seed !== undefined ? Number(o.seed) : -1;
-    const batchSize = numEnv(o.batch ?? o.batchsize ?? SD_BATCH_SIZE, 1);
-    const negativePrompt = String(o.neg ?? o.negative ?? SD_NEGATIVE_PROMPT ?? '');
-
-    await msg.channel.sendTyping();
-    const statusMsg = await msg.reply('🎨 生成中…（Stable Diffusion）');
-
-    try {
-      const imagesB64 = await sdTxt2Img({
-        prompt,
-        negativePrompt,
-        width,
-        height,
-        steps,
-        cfgScale,
-        sampler,
-        seed: Number.isFinite(seed) ? seed : -1,
-        batchSize,
-      });
-
-      if (!imagesB64.length) {
-        await statusMsg.edit('生成結果が空でした（images が返ってこなかった）');
-        return;
-      }
-
-      const files = imagesB64.slice(0, 4).map((b64, idx) => { // 念のため最大4枚
-        const buf = Buffer.from(b64, 'base64');
-        return new AttachmentBuilder(buf, { name: `draw_${Date.now()}_${idx + 1}.png` });
-      });
-
-      // status を更新して画像を投稿
-      await statusMsg.edit(
-        `✅ 完了\nprompt: ${prompt}\nsize: ${width}x${height}, steps: ${steps}, cfg: ${cfgScale}, sampler: ${sampler}`
-      );
-      await msg.channel.send({ files });
-    } catch (e) {
-      console.error(e);
-      await statusMsg.edit(`❌ 生成エラー: ${e.message}\n（WebUIを --api で起動してるか、URLが合ってるか確認してね）`);
-    }
-
-    return;
-  }
-  if (c === '!pause') {
-    st.paused = true;
-    await msg.reply('了解、このチャンネルでは黙るね（paused）');
-    return;
-  }
-  if (c === '!resume') {
-    st.paused = false;
-    await msg.reply('再開するね（resume）');
-    return;
-  }
-  if (c === '!reset') {
-    stateByChannel.delete(msg.channelId);
-    await msg.reply('このチャンネルの履歴をリセットしたよ');
-    return;
-  }
-
-// コマンド以外をキューへ（message）
-const name = msg.member?.displayName || msg.author.username;
-st.queue.push({ kind: "message", msg, name, text: msg.content });
-
-
-  // 即処理（チャンネル単位で直列化）
   try {
     await processQueue(msg.channelId);
   } catch (e) {
@@ -611,13 +394,12 @@ client.on("interactionCreate", async (interaction) => {
           "**スラッシュコマンド**",
           "• `/help` : このヘルプを表示",
           "• `/status` : Botの状態確認",
-          "• `/chat <message>` : LLMと会話",
+          "• `/draw` : Stable Diffusion WebUI で画像生成",
+          "• `/chat <message> <image>` : LLMと会話",
           "• `/pause` : 応答を一時停止",
           "• `/resume` : 応答を再開",
           "• `/reset` : 会話履歴をリセット",
           "",
-          "**テキストコマンド（従来）**",
-          "• `!help` `!status` `!persona` `!draw` `!pause` `!resume` `!reset`",
         ].join("\n")
       );
       return;
