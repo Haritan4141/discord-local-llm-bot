@@ -33,10 +33,15 @@ const stateByChannel = new Map();
  * state = {
  *   paused: boolean,
  *   history: [{role, content}],
- *   queue: Array<{ msg, name, text }>,
+ *   queue: Array<QueueItem>,
  *   processing: boolean,
  * }
+ *
+ * QueueItem:
+ *  - { kind: 'message', msg, name, text }
+ *  - { kind: 'interaction', interaction, name, text, imageAtt }
  */
+
 function getState(channelId) {
   if (!stateByChannel.has(channelId)) {
     stateByChannel.set(channelId, {
@@ -179,6 +184,25 @@ async function sdTxt2Img({ prompt, negativePrompt, width, height, steps, cfgScal
 // ======================
 // ★ 画像対応ヘルパー
 // ======================
+function pickImageFromInteraction(interaction) {
+  const att = interaction.options.getAttachment("image");
+  if (!att) return null;
+
+  const url = att.url || "";
+  const ct = att.contentType || "";
+
+  const looksImageByType = typeof ct === "string" && ct.startsWith("image/");
+  const looksImageByExt = /\.(png|jpe?g|webp|gif)$/i.test(url);
+  if (!looksImageByType && !looksImageByExt) return null;
+
+  return {
+    url,
+    contentType: looksImageByType ? ct : null,
+    size: typeof att.size === "number" ? att.size : null,
+    name: att.name || null,
+  };
+}
+
 function pickFirstImageAttachment(msg) {
   const att = msg.attachments?.first?.();
   if (!att) return null;
@@ -231,6 +255,9 @@ async function fetchAsDataUrl(url, contentTypeHint, maxBytes = 10 * 1024 * 1024)
 // ======================
 // 即レス（キュー）処理
 // ======================
+// ======================
+// 即レス（キュー）処理：message / slash を完全直列化
+// ======================
 async function processQueue(channelId) {
   const st = getState(channelId);
   if (st.processing) return;
@@ -244,67 +271,109 @@ async function processQueue(channelId) {
       }
 
       const item = st.queue.shift();
-      const { msg, name, text } = item;
+
+      // item から「返信API」を抽象化（message と interaction の違いを吸収）
+      const api = (() => {
+        if (item.kind === "interaction") {
+          const interaction = item.interaction;
+          return {
+            kind: "interaction",
+            channel: interaction.channel,
+            // deferReply() 済みを想定（/chat 側で defer する）
+            typing: async () => {}, // interaction は “考え中” 表示が出るので基本不要
+            replyFirst: async (text) => interaction.editReply(text),
+            sendMore: async (text) => interaction.followUp(text),
+            onError: async (msg) => {
+              try { await interaction.editReply(`⚠️ エラー: ${msg}`); } catch {}
+            },
+          };
+        }
+
+        // kind === "message"
+        const msg = item.msg;
+        return {
+          kind: "message",
+          channel: msg.channel,
+          typing: async () => msg.channel.sendTyping(),
+          replyFirst: async (text) => msg.reply(text),
+          sendMore: async (text) => msg.channel.send(text),
+          onError: async (msgText) => {
+            try { await msg.reply(`⚠️ エラー: ${msgText}`); } catch {}
+          },
+        };
+      })();
+
+      const name = item.name;
+      const text = item.text || "";
 
       // コマンドはここに来ない想定だが念のため
       if (isCommand(text)) continue;
 
-      // ★画像が添付されているかチェック（1枚だけ）
-      const imageAtt = pickFirstImageAttachment(msg);
+      // ★画像：message は添付から拾う / interaction は item.imageAtt を使う
+      const imageAtt =
+        item.kind === "interaction"
+          ? (item.imageAtt || null)
+          : pickFirstImageAttachment(item.msg);
 
-      // 履歴には「画像あり」の印だけ残す（base64を残すと履歴が爆増するため）
-      const userChunkForHistory = imageAtt
-        ? `[画像あり] ${name}: ${text || '(画像)'}`
-        : `${name}: ${text}`;
+      try {
+        // 履歴には「画像あり」の印だけ残す（base64を残すと履歴が爆増するため）
+        const userChunkForHistory = imageAtt
+          ? `[画像あり] ${name}: ${text || "(画像)"}`
+          : `${name}: ${text}`;
 
-      st.history.push({ role: 'user', content: userChunkForHistory });
-      trimHistory(st.history, 30);
+        st.history.push({ role: "user", content: userChunkForHistory });
+        trimHistory(st.history, 30);
 
-      await msg.channel.sendTyping();
+        await api.typing();
 
-      // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
-      let reply = '';
-      if (imageAtt) {
-        const dataUrl = await fetchAsDataUrl(imageAtt.url, imageAtt.contentType);
+        // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
+        let reply = "";
+        if (imageAtt) {
+          const dataUrl = await fetchAsDataUrl(imageAtt.url, imageAtt.contentType);
 
-        // OpenAI互換: content を配列にして image_url を付ける
-        const visionUserMessage = {
-          role: 'user',
-          content: [
-            { type: 'text', text: `${name}: ${text || 'この画像について説明して'}` },
-            { type: 'image_url', image_url: dataUrl },
-          ],
-        };
+          // OpenAI互換: content を配列にして image_url を付ける
+          const visionUserMessage = {
+            role: "user",
+            content: [
+              { type: "text", text: `${name}: ${text || "この画像について説明して"}` },
+              { type: "image_url", image_url: dataUrl },
+            ],
+          };
 
-        // st.historyの末尾（さっき積んだ userChunkForHistory）を置き換えて送る
-        // ※履歴自体は軽いまま維持しつつ、送信時だけ画像を添付するため
-        const messagesToSend = [
-          ...st.history.slice(0, -1),
-          visionUserMessage,
-        ];
+          // st.historyの末尾（さっき積んだ userChunkForHistory）を置き換えて送る
+          // ※履歴自体は軽いまま維持しつつ、送信時だけ画像を添付するため
+          const messagesToSend = [
+            ...st.history.slice(0, -1),
+            visionUserMessage,
+          ];
 
-        reply = await ollamaChat(messagesToSend);
-      } else {
-        reply = await ollamaChat(st.history);
-      }
+          reply = await ollamaChat(messagesToSend);
+        } else {
+          reply = await ollamaChat(st.history);
+        }
 
-      const cleaned = reply.trim();
-      if (!cleaned) continue;
+        const cleaned = (reply || "").trim();
+        if (!cleaned) continue;
 
-      st.history.push({ role: 'assistant', content: cleaned });
-      trimHistory(st.history, 30);
+        st.history.push({ role: "assistant", content: cleaned });
+        trimHistory(st.history, 30);
 
-      // 「この発言への返事」にしたいので reply を使う
-      const parts = splitForDiscord(cleaned);
-      await msg.reply(parts[0]);
-      for (let i = 1; i < parts.length; i++) {
-        await msg.channel.send(parts[i]);
+        // 返信（1通目は返信、2通目以降は追加送信）
+        const parts = splitForDiscord(cleaned);
+        await api.replyFirst(parts[0]);
+        for (let i = 1; i < parts.length; i++) {
+          await api.sendMore(parts[i]);
+        }
+      } catch (e) {
+        console.error(e);
+        await api.onError(e?.message || String(e));
       }
     }
   } finally {
     st.processing = false;
   }
 }
+
 
 const client = new Client({
   intents: [
@@ -428,7 +497,7 @@ client.on('messageCreate', async (msg) => {
         [
           '使い方: `!draw <生成したい内容>`',
           '例: `!draw idolmaster, mayuzumi fuyuko, cowboy shot,`',
-//          'オプション例: `!draw 猫 --w 512 --h 512 --steps 25 --cfg 7 --sampler "Euler a"`',
+          //          'オプション例: `!draw 猫 --w 512 --h 512 --steps 25 --cfg 7 --sampler "Euler a"`',
         ].join('\n')
       );
       return;
@@ -499,9 +568,10 @@ client.on('messageCreate', async (msg) => {
     return;
   }
 
-  // コマンド以外をキューへ
-  const name = msg.member?.displayName || msg.author.username;
-  st.queue.push({ msg, name, text: msg.content });
+// コマンド以外をキューへ（message）
+const name = msg.member?.displayName || msg.author.username;
+st.queue.push({ kind: "message", msg, name, text: msg.content });
+
 
   // 即処理（チャンネル単位で直列化）
   try {
@@ -511,5 +581,149 @@ client.on('messageCreate', async (msg) => {
     try { await msg.reply(`エラー: ${e.message}`); } catch {}
   }
 });
+
+// ================================
+// スラッシュコマンド用
+// ================================
+import { MessageFlags } from "discord.js"; // まだ入れてなければ追加（discord.js v14+）
+
+client.on("interactionCreate", async (interaction) => {
+  try {
+    if (!interaction.isChatInputCommand()) return;
+
+    // チャンネル制限（既存と同じ）
+    if (!allowedChannelIds.has(interaction.channelId)) {
+      await interaction.reply({
+        content: "❌ このチャンネルでは使用できません",
+        flags: MessageFlags.Ephemeral, // ← ephemeral警告対策
+      });
+      return;
+    }
+
+    // ★既存設計：チャンネルごとの状態
+    const st = getState(interaction.channelId);
+
+    if (interaction.commandName === "help") {
+      await interaction.reply(
+        [
+          "🧠 **LLMBot ヘルプ**",
+          "",
+          "**スラッシュコマンド**",
+          "• `/help` : このヘルプを表示",
+          "• `/status` : Botの状態確認",
+          "• `/chat <message>` : LLMと会話",
+          "• `/pause` : 応答を一時停止",
+          "• `/resume` : 応答を再開",
+          "• `/reset` : 会話履歴をリセット",
+          "",
+          "**テキストコマンド（従来）**",
+          "• `!help` `!status` `!persona` `!draw` `!pause` `!resume` `!reset`",
+        ].join("\n")
+      );
+      return;
+    }
+
+    if (interaction.commandName === "status") {
+      const histLen = st.history?.length ?? 0;
+      const paused = !!st.paused;
+      const queueLen = st.queue?.length ?? 0;
+
+      await interaction.reply(
+        [
+          "📊 **LLMBot ステータス**",
+          `• paused: \`${paused}\``,
+          `• model: \`${process.env.OLLAMA_MODEL}\``,
+          `• history: \`${histLen}\` messages`,
+          `• queue: \`${queueLen}\``,
+          `• channel: <#${interaction.channelId}>`,
+        ].join("\n")
+      );
+      return;
+    }
+
+    if (interaction.commandName === "pause") {
+      st.paused = true;
+      await interaction.reply("了解、このチャンネルでは黙るね（paused）");
+      return;
+    }
+
+    if (interaction.commandName === "resume") {
+      st.paused = false;
+      await interaction.reply("再開するね（resume）");
+      return;
+    }
+
+    if (interaction.commandName === "reset") {
+      stateByChannel.delete(interaction.channelId);
+      await interaction.reply("このチャンネルの履歴をリセットしたよ");
+      return;
+    }
+
+    if (interaction.commandName === "chat") {
+      const st = getState(interaction.channelId);
+
+      if (st.paused) {
+        await interaction.reply("⏸️ 現在このチャンネルは停止中です（/resume で再開）");
+        return;
+      }
+
+      const text = interaction.options.getString("message") || "";
+      const imageAtt = pickImageFromInteraction(interaction);
+
+      if (!text && !imageAtt) {
+        await interaction.reply("`/chat message:<文章>` か `image:<画像>` のどちらかを指定してね");
+        return;
+      }
+
+      // ★3秒制限対策：先に defer しておく（この後はキュー待ちでもOK）
+      await interaction.deferReply();
+
+      const name = interaction.member?.displayName || interaction.user.username;
+
+      // ★/chat もキューへ（interaction）
+      st.queue.push({
+        kind: "interaction",
+        interaction,
+        name,
+        text,
+        imageAtt, // 画像は interaction から拾ったものを渡す（message添付とは別ルート）
+      });
+
+      // ★キュー処理（チャンネル単位で完全直列化）
+      try {
+        await processQueue(interaction.channelId);
+      } catch (e) {
+        console.error(e);
+        try { await interaction.editReply(`⚠️ エラー: ${e.message}`); } catch { }
+      }
+
+      return;
+    }
+
+
+  } catch (e) {
+    console.error("interaction error:", e);
+
+    // defer済みの場合は followUp で返す
+    if (interaction.deferred) {
+      try {
+        await interaction.followUp({
+          content: "⚠️ エラーが発生しました",
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch {}
+      return;
+    }
+
+    if (interaction.isRepliable() && !interaction.replied) {
+      await interaction.reply({
+        content: "⚠️ エラーが発生しました",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+});
+
+
 
 client.login(DISCORD_TOKEN);
