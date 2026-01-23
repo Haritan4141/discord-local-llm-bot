@@ -967,6 +967,9 @@ client.on("interactionCreate", async (interaction) => {
           "• `/status` : Botの状態確認",
           "• `/draw` : Stable Diffusion WebUI で画像生成",
           "• `/chat <message> <image>` : LLMと会話",
+          "• `/persona <text>` : 人格を変更",
+          "• `/persona-show` : 現在のpersonaを表示",
+          "• `/othello [difficulty]` : オセロ開始（リアクション操作）",
           "• `/pause` : 応答を一時停止",
           "• `/resume` : 応答を再開",
           "• `/reset` : 会話履歴をリセット",
@@ -1038,6 +1041,34 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       await interaction.reply("persona updated.");
+      return;
+    }
+
+    if (interaction.commandName === "persona-show") {
+      const base = process.env.SYSTEM_PROMPT || "You are a helpful assistant.";
+      let current = base;
+      if (st.history?.[0]?.role === "system") {
+        current = st.history[0].content || base;
+      }
+
+      const marker = "--- persona override ---";
+      let baseText = current;
+      let overrideText = "";
+      const idx = current.indexOf(marker);
+      if (idx !== -1) {
+        baseText = current.slice(0, idx).trim();
+        overrideText = current.slice(idx + marker.length).trim();
+      } else {
+        baseText = current.trim();
+      }
+
+      const header = "🧩 **persona 現在設定**";
+      const status = `• override: ${overrideText ? "あり" : "なし"}`;
+      const body = overrideText
+        ? `${baseText}\n\n${marker}\n${overrideText}`
+        : baseText || base;
+
+      await interaction.reply([header, status, "", "```", body, "```"].join("\n"));
       return;
     }
 

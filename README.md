@@ -54,6 +54,7 @@ PowerShell から起動する場合は `node index.mjs` でも動きます。
 - `/status` : 状態表示
 - `/chat [message] [image]` : LLMと会話 (画像は任意)
 - `/persona [text] [reset]` : 口調/人格の上書き・リセット
+- `/persona-show` : 現在のpersona設定を表示
 - `/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative]` : 画像生成 (WebUI 起動時のみ)
 - `/othello [difficulty]` : オセロ開始（リアクション操作）
 - `/pause` : そのチャンネルで停止

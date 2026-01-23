@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
 
 const commands = [
@@ -37,9 +37,10 @@ const commands = [
   new SlashCommandBuilder()
     .setName("reset")
     .setDescription("会話コンテキストをリセットします"),
+
   new SlashCommandBuilder()
     .setName("persona")
-    .setDescription("人格を変更・指定します。")
+    .setDescription("人格を変更・保持します。")
     .addStringOption(option =>
       option
         .setName("text")
@@ -52,6 +53,11 @@ const commands = [
         .setDescription("Reset persona to default")
         .setRequired(false)
     ),
+
+  new SlashCommandBuilder()
+    .setName("persona-show")
+    .setDescription("現在のpersona設定を表示します。"),
+
   new SlashCommandBuilder()
     .setName("draw")
     .setDescription("Stable Diffusion WebUI で画像生成をします。")
@@ -109,6 +115,7 @@ const commands = [
         .setDescription("Negative prompt")
         .setRequired(false)
     ),
+
   new SlashCommandBuilder()
     .setName("othello")
     .setDescription("オセロを開始します（VS AI）")
@@ -129,28 +136,28 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 // ========================
-// ✅ どっちに登録するか選ぶ
+// どっちに登録するか選ぶ
 // ========================
 
 /**
- * (A) ギルド（サーバー）限定で登録：反映が速い（数秒〜）
- * いま使ってるのはこっち
+ * (A) ギルド（サーバー）限定で登録（反映が速い）
+ * 今使ってるならこっち
  */
 await rest.put(
   Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
   { body: commands }
 );
-console.log("✅ Guild slash commands registered");
+console.log("✓ Guild slash commands registered");
 
-// ---- ↓ グローバルにしたい時は上をコメントアウトして、下を有効にする ----
+// ---- グローバルにしたい場合は上をコメントアウトして、下を有効にする ----
 
 /**
- * (B) グローバル（全サーバー）登録：反映が遅い（数分〜最大1時間くらい）
- * ※ すでにギルド登録が残ってると /help が2つ出る原因になるので、
- *    切り替える時は不要側を “空配列PUT” で消すのが安全。
+ * (B) グローバル（全サーバー）登録（反映が遅い：最大1時間程度）
+ * ※ すでにギルド登録が残ってると /help が二重に見えるので、
+ *    切り替える時は不要な方を空配列で消すのが安全です。
  */
 // await rest.put(
 //   Routes.applicationCommands(process.env.CLIENT_ID),
 //   { body: commands }
 // );
-// console.log("✅ GLOBAL slash commands registered");
+// console.log("✓ GLOBAL slash commands registered");
