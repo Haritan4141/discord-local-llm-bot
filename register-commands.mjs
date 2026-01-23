@@ -4,15 +4,15 @@ import { REST, Routes, SlashCommandBuilder } from "discord.js";
 const commands = [
   new SlashCommandBuilder()
     .setName("help")
-    .setDescription("LLMBotの使い方・コマンド一覧を表示します"),
+    .setDescription("LLMBotの使い方・コマンド一覧を表示します。"),
 
   new SlashCommandBuilder()
     .setName("status")
-    .setDescription("Botの現在状態を表示します"),
+    .setDescription("Botの現在状態を表示します。"),
 
   new SlashCommandBuilder()
     .setName("chat")
-    .setDescription("LLMに話しかけます")
+    .setDescription("LLMに話しかけます。")
     .addStringOption(option =>
         option
         .setName("message")
@@ -37,6 +37,78 @@ const commands = [
   new SlashCommandBuilder()
     .setName("reset")
     .setDescription("会話コンテキストをリセットします"),
+  new SlashCommandBuilder()
+    .setName("persona")
+    .setDescription("人格を変更・指定します。")
+    .addStringOption(option =>
+      option
+        .setName("text")
+        .setDescription("Persona instruction text")
+        .setRequired(false)
+    )
+    .addBooleanOption(option =>
+      option
+        .setName("reset")
+        .setDescription("Reset persona to default")
+        .setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName("draw")
+    .setDescription("Stable Diffusion WebUI で画像生成をします。")
+    .addStringOption(option =>
+      option
+        .setName("prompt")
+        .setDescription("Prompt text")
+        .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("width")
+        .setDescription("Image width")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("height")
+        .setDescription("Image height")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("steps")
+        .setDescription("Sampling steps")
+        .setRequired(false)
+    )
+    .addNumberOption(option =>
+      option
+        .setName("cfg")
+        .setDescription("CFG scale")
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option
+        .setName("sampler")
+        .setDescription("Sampler name")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("seed")
+        .setDescription("Seed (-1 for random)")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("batch")
+        .setDescription("Batch size")
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option
+        .setName("negative")
+        .setDescription("Negative prompt")
+        .setRequired(false)
+    ),
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);

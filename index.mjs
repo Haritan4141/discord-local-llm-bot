@@ -659,6 +659,100 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
+    if (interaction.commandName === "persona") {
+      const reset = !!interaction.options.getBoolean("reset");
+      const text = (interaction.options.getString("text") || "").trim();
+      const base = process.env.SYSTEM_PROMPT || "You are a helpful assistant.";
+
+      if (reset || text.toLowerCase() === "reset") {
+        if (st.history?.[0]?.role === "system") {
+          st.history[0].content = base;
+        }
+        await interaction.reply("persona reset to default.");
+        return;
+      }
+
+      if (!text) {
+        await interaction.reply("Provide `text` or set `reset:true`.");
+        return;
+      }
+
+      const newSystem = [base, "", "--- persona override ---", text].join("\n");
+      if (st.history?.[0]?.role === "system") {
+        st.history[0].content = newSystem;
+      } else if (st.history) {
+        st.history.unshift({ role: "system", content: newSystem });
+      }
+
+      await interaction.reply("persona updated.");
+      return;
+    }
+
+    if (interaction.commandName === "draw") {
+      if (st.paused) {
+        await interaction.reply("paused in this channel. use /resume.");
+        return;
+      }
+
+      const prompt = (interaction.options.getString("prompt", true) || "").trim();
+      if (!prompt) {
+        await interaction.reply("prompt is required.");
+        return;
+      }
+
+      const width = interaction.options.getInteger("width");
+      const height = interaction.options.getInteger("height");
+      const steps = interaction.options.getInteger("steps");
+      const cfgScale = interaction.options.getNumber("cfg");
+      const samplerOpt = interaction.options.getString("sampler");
+      const seedOpt = interaction.options.getInteger("seed");
+      const batchOpt = interaction.options.getInteger("batch");
+      const negativeOpt = interaction.options.getString("negative");
+
+      const finalWidth = Number.isFinite(width) ? width : numEnv(SD_WIDTH, 768);
+      const finalHeight = Number.isFinite(height) ? height : numEnv(SD_HEIGHT, 768);
+      const finalSteps = Number.isFinite(steps) ? steps : numEnv(SD_STEPS, 20);
+      const finalCfgScale = Number.isFinite(cfgScale) ? cfgScale : numEnv(SD_CFG_SCALE, 7);
+      const finalSampler = String(samplerOpt ?? SD_SAMPLER ?? "DPM++ 2M Karras");
+      const finalSeed = Number.isFinite(seedOpt) ? seedOpt : -1;
+      const finalBatch = Number.isFinite(batchOpt) ? batchOpt : numEnv(SD_BATCH_SIZE, 1);
+      const finalNegative = String(negativeOpt ?? SD_NEGATIVE_PROMPT ?? "");
+
+      await interaction.deferReply();
+
+      try {
+        const imagesB64 = await sdTxt2Img({
+          prompt,
+          negativePrompt: finalNegative,
+          width: finalWidth,
+          height: finalHeight,
+          steps: finalSteps,
+          cfgScale: finalCfgScale,
+          sampler: finalSampler,
+          seed: finalSeed,
+          batchSize: finalBatch,
+        });
+
+        if (!imagesB64.length) {
+          await interaction.editReply("no images returned.");
+          return;
+        }
+
+        const files = imagesB64.slice(0, 4).map((b64, idx) => {
+          const buf = Buffer.from(b64, "base64");
+          return new AttachmentBuilder(buf, { name: `draw_${Date.now()}_${idx + 1}.png` });
+        });
+
+        const statusLine = `done. prompt: ${prompt} | size: ${finalWidth}x${finalHeight} | steps: ${finalSteps} | cfg: ${finalCfgScale} | sampler: ${finalSampler}`;
+        await interaction.editReply({ content: statusLine, files });
+      } catch (e) {
+        console.error(e);
+        await interaction.editReply(`draw error: ${e.message}`);
+      }
+
+      return;
+    }
+
     if (interaction.commandName === "chat") {
       const st = getState(interaction.channelId);
 
