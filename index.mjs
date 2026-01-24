@@ -1024,7 +1024,15 @@ client.on("interactionCreate", async (interaction) => {
         if (st.history?.[0]?.role === "system") {
           st.history[0].content = base;
         }
-        await interaction.reply("persona reset to default.");
+        await interaction.reply(
+          [
+            "persona reset to default.",
+            "",
+            "```",
+            base,
+            "```",
+          ].join("\n")
+        );
         return;
       }
 
@@ -1040,7 +1048,16 @@ client.on("interactionCreate", async (interaction) => {
         st.history.unshift({ role: "system", content: newSystem });
       }
 
-      await interaction.reply("persona updated.");
+      const preview = text.length > 1000 ? `${text.slice(0, 1000)}…` : text;
+      await interaction.reply(
+        [
+          "persona updated. 人格設定完了。",
+          "",
+          "```",
+          preview || "(empty)",
+          "```",
+        ].join("\n")
+      );
       return;
     }
 
