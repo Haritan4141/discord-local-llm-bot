@@ -134,7 +134,7 @@ const ACE_KEY = ACE_API_KEY || process.env.ACESTEP_API_KEY;
 const COMFY_BASE_URL = (COMFY_URL || 'http://127.0.0.1:8188').replace(/\/$/, '');
 const COMFY_WORKFLOW_FILE = COMFY_WORKFLOW_PATH
   ? COMFY_WORKFLOW_PATH
-  : path.join(__dirname, 'comfyui', 'workflows', 'audio_ace_step_1_5_checkpoint.json');
+  : path.join(__dirname, 'comfyui', 'workflows', 'audio_ace_step_1_5_checkpoint_api.json');
 const MUSIC_BACKEND_MODE = (MUSIC_BACKEND || 'comfyui').toLowerCase();
 
 function numEnv(v, def) {
@@ -383,6 +383,11 @@ function updateWorkflowForMusic(workflow, { prompt, lyrics, durationSec, bpm, la
     textNode.inputs.timesignature = "4";
     textNode.inputs.language = lang;
     textNode.inputs.keyscale = "E minor";
+    if (textNode.inputs.cfg_scale === undefined) textNode.inputs.cfg_scale = 1.0;
+    if (textNode.inputs.generate_audio_codes === undefined) textNode.inputs.generate_audio_codes = true;
+    if (textNode.inputs.top_k === undefined) textNode.inputs.top_k = 0;
+    if (textNode.inputs.temperature === undefined) textNode.inputs.temperature = 1.0;
+    if (textNode.inputs.top_p === undefined) textNode.inputs.top_p = 0.9;
   }
 
   if (emptyLatent?.inputs) {
