@@ -76,3 +76,28 @@ PowerShell から起動する場合は `node index.mjs` でも動きます。
 
 ## ライセンス
 ISC (package.json に準拠)
+
+## Slash Commands
+- /help: Show help
+- /status: Show bot status
+- /chat [message] [image]: Chat with LLM
+- /persona [text] [reset]: Set or reset persona
+- /persona-show: Show current persona
+- /draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative]: Image generation (SD WebUI)
+- /music prompt [duration] [lyrics] [bpm] [language]: Music generation (ComfyUI)
+- /othello [difficulty]: Start Othello
+- /pause: Pause responses in this channel
+- /resume: Resume responses in this channel
+- /reset: Reset chat history for this channel
+
+## /music Options
+- prompt (required): Music description
+- duration (optional): Seconds (10-600, default 120)
+- lyrics (optional): Lyrics text
+- bpm (optional): 30-300
+- language (optional): Vocal language (default ja)
+
+## /music Example
+```text
+/music prompt:"j-pop vocal, pop rock" duration:120 lyrics:"test" bpm:120 language:ja
+```

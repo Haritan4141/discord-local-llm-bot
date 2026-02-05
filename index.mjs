@@ -1,5 +1,8 @@
 ﻿import 'dotenv/config';
 import { deflateSync } from 'node:zlib';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   Client,
   GatewayIntentBits,
@@ -27,6 +30,12 @@ const {
   SD_SAMPLER,
   SD_NEGATIVE_PROMPT,
   SD_BATCH_SIZE,
+  ACE_URL,
+  ACE_POLL_MS,
+  ACE_API_KEY,
+  COMFY_URL,
+  COMFY_WORKFLOW_PATH,
+  MUSIC_BACKEND,
 
 } = process.env;
 
@@ -40,6 +49,10 @@ if (!OLLAMA_URL) throw new Error('OLLAMA_URL が .env に設定されていま�
 if (!OLLAMA_MODEL) throw new Error('OLLAMA_MODEL が .env に設定されていません');
 
 const stateByChannel = new Map();
+const musicQueue = [];
+let musicProcessing = false;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 /**
  * state = {
  *   paused: boolean,
@@ -116,6 +129,13 @@ function splitForDiscord(text, chunkSize = 1800) {
 // ★ draw (AUTOMATIC1111) 画像生成
 // ======================
 const SD_URL = (SD_WEBUI_URL || 'http://127.0.0.1:7860').replace(/\/$/, '');
+const ACE_BASE_URL = (ACE_URL || 'http://127.0.0.1:8001').replace(/\/$/, '');
+const ACE_KEY = ACE_API_KEY || process.env.ACESTEP_API_KEY;
+const COMFY_BASE_URL = (COMFY_URL || 'http://127.0.0.1:8188').replace(/\/$/, '');
+const COMFY_WORKFLOW_FILE = COMFY_WORKFLOW_PATH
+  ? COMFY_WORKFLOW_PATH
+  : path.join(__dirname, 'comfyui', 'workflows', 'audio_ace_step_1_5_checkpoint.json');
+const MUSIC_BACKEND_MODE = (MUSIC_BACKEND || 'comfyui').toLowerCase();
 
 function numEnv(v, def) {
   const n = Number(v);
@@ -151,6 +171,443 @@ async function sdTxt2Img({ prompt, negativePrompt, width, height, steps, cfgScal
   const images = Array.isArray(json?.images) ? json.images : [];
 
   return images; // base64 (png) strings
+}
+
+// ======================
+// ★ music (ACE-Step)
+// ======================
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function aceHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (ACE_KEY) headers.Authorization = `Bearer ${ACE_KEY}`;
+  return headers;
+}
+
+async function aceReleaseTask({ prompt, durationSec, audioFormat, lyrics, bpm, language }) {
+  const payload = {
+    prompt,
+    lyrics: lyrics || "",
+    audio_duration: durationSec,
+    audio_format: audioFormat || "mp3",
+    bpm: Number.isFinite(bpm) ? bpm : null,
+    vocal_language: (language || "ja").trim() || "ja",
+    time_signature: "4",
+    key_scale: "E minor",
+    inference_steps: 8,
+    guidance_scale: 1.0,
+    shift: 3.0,
+    batch_size: 1,
+    thinking: false,
+    sample_mode: false,
+    use_format: false,
+    use_cot_caption: false,
+    use_cot_language: false,
+  };
+
+  const res = await fetch(`${ACE_BASE_URL}/release_task`, {
+    method: "POST",
+    headers: aceHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ACE-Step error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  const json = await res.json();
+  const taskId = json?.data?.task_id;
+  if (!taskId) {
+    throw new Error(`ACE-Step error: task_id missing. response=${JSON.stringify(json)}`);
+  }
+  return {
+    taskId,
+    queuePosition: json?.data?.queue_position ?? null,
+  };
+}
+
+async function aceQueryResult(taskId) {
+  const res = await fetch(`${ACE_BASE_URL}/query_result`, {
+    method: "POST",
+    headers: aceHeaders(),
+    body: JSON.stringify({ task_id_list: [taskId] }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ACE-Step poll error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  const json = await res.json();
+  const row = Array.isArray(json?.data) ? json.data[0] : null;
+  if (!row) {
+    throw new Error(`ACE-Step poll error: invalid response ${JSON.stringify(json)}`);
+  }
+
+  return {
+    status: typeof row.status === "number" ? row.status : 0,
+    result: row.result || "",
+  };
+}
+
+function normalizeAceAudioUrl(pathOrUrl) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  if (pathOrUrl.startsWith("/v1/audio?path=")) {
+    return `${ACE_BASE_URL}${pathOrUrl}`;
+  }
+  return `${ACE_BASE_URL}/v1/audio?path=${encodeURIComponent(pathOrUrl)}`;
+}
+
+async function aceFetchAudio(pathOrUrl) {
+  const url = normalizeAceAudioUrl(pathOrUrl);
+  const res = await fetch(url, { headers: ACE_KEY ? { Authorization: `Bearer ${ACE_KEY}` } : {} });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ACE-Step audio error: ${res.status} ${res.statusText}\n${text}`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  const ct = res.headers.get("content-type") || "";
+  return { buf, contentType: ct };
+}
+
+// ======================
+// ★ music (ComfyUI)
+// ======================
+let comfyWorkflowTemplate = null;
+
+function loadComfyWorkflowTemplate() {
+  if (comfyWorkflowTemplate) return comfyWorkflowTemplate;
+  if (!fs.existsSync(COMFY_WORKFLOW_FILE)) {
+    throw new Error(`ComfyUI workflow not found: ${COMFY_WORKFLOW_FILE}`);
+  }
+  const raw = fs.readFileSync(COMFY_WORKFLOW_FILE, 'utf-8');
+  const json = JSON.parse(raw);
+  comfyWorkflowTemplate = json;
+  return comfyWorkflowTemplate;
+}
+
+function cloneWorkflow(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function findNodeByType(nodes, type) {
+  return nodes.find(n => n.type === type);
+}
+
+function findNodeByTitle(nodes, title) {
+  return nodes.find(n => n.title === title);
+}
+
+function findApiNodeByClass(workflow, classType) {
+  for (const key of Object.keys(workflow)) {
+    const node = workflow[key];
+    if (node?.class_type === classType) return node;
+  }
+  return null;
+}
+
+function updateWorkflowForMusic(workflow, { prompt, lyrics, durationSec, bpm, language }) {
+  const seed = Math.floor(Math.random() * 2147483647);
+  const lang = (language || "ja").trim() || "ja";
+  const safeDuration = Number.isFinite(durationSec) ? durationSec : 20;
+  const finalBpm = Number.isFinite(bpm) ? bpm : null;
+
+  // UI workflow format (nodes/links)
+  if (Array.isArray(workflow.nodes)) {
+    const nodes = workflow.nodes || [];
+    const textNode = findNodeByType(nodes, "TextEncodeAceStepAudio1.5");
+    const seedNode = findNodeByTitle(nodes, "seed");
+    const durationNode = findNodeByTitle(nodes, "Song Duration");
+    const emptyLatent = findNodeByType(nodes, "EmptyAceStep1.5LatentAudio");
+    const sampler = findNodeByType(nodes, "KSampler");
+    const shiftNode = findNodeByType(nodes, "ModelSamplingAuraFlow");
+
+    if (textNode?.widgets_values) {
+      textNode.widgets_values[0] = prompt || "";
+      textNode.widgets_values[1] = lyrics || "";
+      textNode.widgets_values[2] = seed;
+      if (finalBpm !== null) textNode.widgets_values[4] = finalBpm;
+      textNode.widgets_values[5] = safeDuration;
+      textNode.widgets_values[6] = "4";
+      textNode.widgets_values[7] = lang;
+      textNode.widgets_values[8] = "E minor";
+    }
+
+    if (seedNode?.widgets_values) {
+      seedNode.widgets_values[0] = seed;
+      seedNode.widgets_values[1] = "fixed";
+    }
+
+    if (durationNode?.widgets_values) {
+      durationNode.widgets_values[0] = safeDuration;
+      durationNode.widgets_values[1] = "fixed";
+    }
+
+    if (emptyLatent?.widgets_values) {
+      emptyLatent.widgets_values[0] = safeDuration;
+      emptyLatent.widgets_values[1] = 1;
+    }
+
+    if (sampler?.widgets_values) {
+      sampler.widgets_values[0] = seed;
+      sampler.widgets_values[1] = "fixed";
+      sampler.widgets_values[2] = 8;
+      sampler.widgets_values[3] = 1.0;
+      sampler.widgets_values[4] = "euler";
+      sampler.widgets_values[5] = "simple";
+      sampler.widgets_values[6] = 1.0;
+    }
+
+    if (shiftNode?.widgets_values) {
+      shiftNode.widgets_values[0] = 3.0;
+    }
+    return;
+  }
+
+  // API workflow format (node_id: {class_type, inputs})
+  const textNode = findApiNodeByClass(workflow, "TextEncodeAceStepAudio1.5");
+  const emptyLatent = findApiNodeByClass(workflow, "EmptyAceStep1.5LatentAudio");
+  const sampler = findApiNodeByClass(workflow, "KSampler");
+  const shiftNode = findApiNodeByClass(workflow, "ModelSamplingAuraFlow");
+
+  if (textNode?.inputs) {
+    textNode.inputs.tags = prompt || "";
+    textNode.inputs.lyrics = lyrics || "";
+    textNode.inputs.seed = seed;
+    if (finalBpm !== null) textNode.inputs.bpm = finalBpm;
+    textNode.inputs.duration = safeDuration;
+    textNode.inputs.timesignature = "4";
+    textNode.inputs.language = lang;
+    textNode.inputs.keyscale = "E minor";
+  }
+
+  if (emptyLatent?.inputs) {
+    emptyLatent.inputs.seconds = safeDuration;
+    emptyLatent.inputs.batch_size = 1;
+  }
+
+  if (sampler?.inputs) {
+    sampler.inputs.seed = seed;
+    sampler.inputs.steps = 8;
+    sampler.inputs.cfg = 1.0;
+    sampler.inputs.sampler_name = "euler";
+    sampler.inputs.scheduler = "simple";
+    sampler.inputs.denoise = 1.0;
+  }
+
+  if (shiftNode?.inputs) {
+    shiftNode.inputs.shift = 3.0;
+  }
+}
+
+async function comfySubmitPrompt(workflow) {
+  const res = await fetch(`${COMFY_BASE_URL}/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: workflow,
+      client_id: `llmbot-${Date.now()}`,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ComfyUI error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  const json = await res.json();
+  const promptId = json?.prompt_id;
+  if (!promptId) {
+    throw new Error(`ComfyUI error: prompt_id missing. response=${JSON.stringify(json)}`);
+  }
+  return promptId;
+}
+
+async function comfyFetchHistory(promptId) {
+  const res = await fetch(`${COMFY_BASE_URL}/history/${promptId}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ComfyUI history error: ${res.status} ${res.statusText}\n${text}`);
+  }
+  return res.json();
+}
+
+function pickAudioFromHistory(history, promptId) {
+  const entry = history?.[promptId] || history;
+  const outputs = entry?.outputs || {};
+
+  for (const key of Object.keys(outputs)) {
+    const out = outputs[key];
+    if (out?.audio?.length) return out.audio[0];
+  }
+  return null;
+}
+
+async function comfyFetchAudio(file) {
+  if (!file || !file.filename) {
+    throw new Error("ComfyUI audio not found in history.");
+  }
+  const subfolder = file.subfolder || "";
+  const type = file.type || "output";
+  const url = `${COMFY_BASE_URL}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(subfolder)}&type=${encodeURIComponent(type)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ComfyUI audio error: ${res.status} ${res.statusText}\n${text}`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  return { buf, filename: file.filename };
+}
+
+async function handleMusicJobComfy(job) {
+  const { interaction, prompt, durationSec } = job;
+  const pollMs = Math.max(500, numEnv(ACE_POLL_MS, 2000));
+  const timeoutMs = 20 * 60 * 1000;
+
+  try {
+    await interaction.editReply(`music: generating... (${durationSec}s)`);
+  } catch {}
+
+  const template = loadComfyWorkflowTemplate();
+  const workflow = cloneWorkflow(template);
+  updateWorkflowForMusic(workflow, {
+    prompt,
+    lyrics: job.lyrics || "",
+    durationSec,
+    bpm: job.bpm,
+    language: job.language,
+  });
+
+  const promptId = await comfySubmitPrompt(workflow);
+
+  const started = Date.now();
+  while (true) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error("music: timeout while waiting for result.");
+    }
+    await sleep(pollMs);
+    const history = await comfyFetchHistory(promptId);
+    const audio = pickAudioFromHistory(history, promptId);
+    if (!audio) continue;
+
+    const { buf, filename } = await comfyFetchAudio(audio);
+    const ext = (filename.split(".").pop() || "mp3").toLowerCase();
+    const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : "mp3";
+    const outName = `music_${Date.now()}.${safeExt}`;
+    const file = new AttachmentBuilder(buf, { name: outName });
+    const lyricText = (job.lyrics || "").trim();
+    const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
+    const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : "";
+    const header = `music: done. duration=${durationSec}s | prompt: ${prompt}${lyricLine}`;
+
+    await interaction.editReply({
+      content: header,
+      files: [file],
+    });
+    return;
+  }
+}
+
+async function handleMusicJobAce(job) {
+  const { interaction, prompt, durationSec } = job;
+  const pollMs = Math.max(500, numEnv(ACE_POLL_MS, 2000));
+  const timeoutMs = 20 * 60 * 1000;
+
+  try {
+    await interaction.editReply(`music: generating... (${durationSec}s)`);
+  } catch {}
+
+  const { taskId, queuePosition } = await aceReleaseTask({
+    prompt,
+    durationSec,
+    audioFormat: "mp3",
+    lyrics: job.lyrics || "",
+    bpm: job.bpm,
+    language: job.language,
+  });
+
+  if (queuePosition && queuePosition > 1) {
+    try {
+      await interaction.editReply(`music: queued (position ${queuePosition}).`);
+    } catch {}
+  }
+
+  const started = Date.now();
+  while (true) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error("music: timeout while waiting for result.");
+    }
+
+    await sleep(pollMs);
+    const { status, result } = await aceQueryResult(taskId);
+
+    if (status === 0) {
+      continue;
+    }
+    if (status === 2) {
+      throw new Error("music: generation failed.");
+    }
+
+    let parsed = [];
+    try {
+      parsed = JSON.parse(result || "[]");
+    } catch {}
+
+    const item = Array.isArray(parsed) ? parsed[0] : null;
+    const filePath = item?.file || "";
+    if (!filePath) {
+      throw new Error("music: audio file path missing.");
+    }
+
+    const { buf, contentType } = await aceFetchAudio(filePath);
+    const ext = (filePath.split(".").pop() || "mp3").toLowerCase();
+    const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : "mp3";
+    const filename = `music_${Date.now()}.${safeExt}`;
+
+    const file = new AttachmentBuilder(buf, { name: filename });
+    const meta = item?.metas?.duration ? `duration=${item.metas.duration}s` : `duration=${durationSec}s`;
+    const promptText = item?.prompt || prompt;
+    const lyricText = (job.lyrics || "").trim();
+    const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
+    const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : "";
+    const header = `music: done. ${meta} | prompt: ${promptText}${lyricLine}`;
+
+    await interaction.editReply({
+      content: header,
+      files: [file],
+    });
+    return;
+  }
+}
+
+async function handleMusicJob(job) {
+  if (MUSIC_BACKEND_MODE === "comfyui") {
+    return handleMusicJobComfy(job);
+  }
+  return handleMusicJobAce(job);
+}
+
+async function processMusicQueue() {
+  if (musicProcessing) return;
+  musicProcessing = true;
+  try {
+    while (musicQueue.length > 0) {
+      const job = musicQueue.shift();
+      if (!job) continue;
+      try {
+        await handleMusicJob(job);
+      } catch (e) {
+        console.error(e);
+        try { await job.interaction.editReply(`music error: ${e?.message || String(e)}`); } catch {}
+      }
+    }
+  } finally {
+    musicProcessing = false;
+  }
 }
 
 
@@ -557,25 +1014,37 @@ async function syncReactionControls(game, message, sliceLen, page, totalPages) {
   if (totalPages > 1 && page > 0) desired.push("◀️");
   if (totalPages > 1 && page < totalPages - 1) desired.push("▶️");
 
-  const cache = message.reactions.cache;
   const botId = message.client?.user?.id;
 
-  for (const emoji of desired) {
-    if (cache.has(emoji)) continue;
-    try {
-      await message.react(emoji);
-    } catch (e) {
-      if (e?.code === 50013) {
-        game.reactionDisabled = true;
-        await notifyReactionPermission(game, message);
-        return;
+  for (let pass = 0; pass < 2; pass++) {
+    const fresh = pass === 0 ? message : await message.fetch().catch(() => message);
+    const cache = fresh.reactions.cache;
+    let missing = false;
+
+    for (const emoji of desired) {
+      const reaction = cache.get(emoji);
+      if (reaction?.me) continue;
+      missing = true;
+      try {
+        await fresh.react(emoji);
+      } catch (e) {
+        if (e?.code === 50013) {
+          game.reactionDisabled = true;
+          await notifyReactionPermission(game, message);
+          return;
+        }
       }
     }
+
+    if (!missing || pass === 1) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
   }
 
   if (botId) {
+    const cache = message.reactions.cache;
     for (const [emoji, reaction] of cache) {
       if (desired.includes(emoji)) continue;
+      if (!reaction.me) continue;
       try {
         await reaction.users.remove(botId);
       } catch (e) {
@@ -966,6 +1435,7 @@ client.on("interactionCreate", async (interaction) => {
           "• `/help` : このヘルプを表示",
           "• `/status` : Botの状態確認",
           "• `/draw` : Stable Diffusion WebUI で画像生成",
+          "• `/music` : ComfyUI で音楽生成",
           "• `/chat <message> <image>` : LLMと会話",
           "• `/persona <text>` : 人格を変更",
           "• `/persona-show` : 現在のpersonaを表示",
@@ -1151,6 +1621,41 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.editReply(`draw error: ${e.message}`);
       }
 
+      return;
+    }
+
+    if (interaction.commandName === "music") {
+      if (st.paused) {
+        await interaction.reply("paused in this channel. use /resume.");
+        return;
+      }
+
+      const prompt = (interaction.options.getString("prompt", true) || "").trim();
+      if (!prompt) {
+        await interaction.reply("prompt is required.");
+        return;
+      }
+
+      const language = (interaction.options.getString("language") || "").trim();
+      const lyrics = (interaction.options.getString("lyrics") || "").trim();
+      const durationOpt = interaction.options.getInteger("duration");
+      let durationSec = Number.isFinite(durationOpt) ? durationOpt : 120;
+      durationSec = Math.max(10, Math.min(600, durationSec));
+      const bpmOpt = interaction.options.getInteger("bpm");
+      const bpm = Number.isFinite(bpmOpt) ? Math.max(30, Math.min(300, bpmOpt)) : null;
+
+      await interaction.deferReply();
+
+      musicQueue.push({ interaction, prompt, durationSec, lyrics, bpm, language });
+      const position = musicQueue.length + (musicProcessing ? 1 : 0);
+
+      if (musicProcessing || position > 1) {
+        try {
+          await interaction.editReply(`music: queued (position ${position}).`);
+        } catch {}
+      }
+
+      await processMusicQueue();
       return;
     }
 

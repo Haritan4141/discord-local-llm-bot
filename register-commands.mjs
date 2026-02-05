@@ -117,6 +117,40 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
+    .setName("music")
+    .setDescription("ACE-Step で音楽生成をします。")
+    .addStringOption(option =>
+      option
+        .setName("prompt")
+        .setDescription("Prompt text")
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("language")
+        .setDescription("Vocal language (default: ja)")
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option
+        .setName("lyrics")
+        .setDescription("Lyrics (optional)")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("duration")
+        .setDescription("Duration (seconds)")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("bpm")
+        .setDescription("BPM (30-300)")
+        .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
     .setName("othello")
     .setDescription("オセロを開始します（VS AI）")
     .addStringOption(option =>
