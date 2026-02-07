@@ -101,3 +101,19 @@ ISC (package.json に準拠)
 ```text
 /music prompt:"j-pop vocal, pop rock" duration:120 lyrics:"test" bpm:120 language:ja
 ```
+
+## Remote Connection Example
+When using SD WebUI / ComfyUI on another machine, set host URLs in `.env`.
+
+```env
+SD_WEBUI_URL=http://192.168.1.50:7860
+COMFY_URL=http://192.168.1.51:8188
+```
+
+Required server startup options:
+- SD WebUI: `--api --listen`
+- ComfyUI: `--listen`
+
+Also check network and security settings:
+- Allow inbound ports in firewall on the server machine.
+- Confirm client can reach the server IP/port from your network.
