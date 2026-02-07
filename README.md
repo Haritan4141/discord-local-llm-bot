@@ -102,6 +102,20 @@ ISC (package.json に準拠)
 /music prompt:"j-pop vocal, pop rock" duration:120 lyrics:"test" bpm:120 language:ja
 ```
 
+## Japanese Prompt Translation For `/draw`
+You can enable prompt translation in the bot and type Japanese prompts in Discord.
+
+`.env` settings:
+```env
+SD_PROMPT_TRANSLATE=true
+SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
+```
+
+Notes:
+- Translation runs only for prompts that contain Japanese characters.
+- If translation fails, the bot falls back to the original prompt.
+- `SD_PROMPT_TRANSLATE_MODEL` is optional; if empty, `OLLAMA_MODEL` is used.
+
 ## Remote Connection Example
 When using SD WebUI / ComfyUI on another machine, set host URLs in `.env`.
 

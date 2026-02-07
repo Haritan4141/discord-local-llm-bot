@@ -30,6 +30,8 @@ const {
   SD_SAMPLER,
   SD_NEGATIVE_PROMPT,
   SD_BATCH_SIZE,
+  SD_PROMPT_TRANSLATE,
+  SD_PROMPT_TRANSLATE_MODEL,
   ACE_URL,
   ACE_POLL_MS,
   ACE_API_KEY,
@@ -136,10 +138,50 @@ const COMFY_WORKFLOW_FILE = COMFY_WORKFLOW_PATH
   ? COMFY_WORKFLOW_PATH
   : path.join(__dirname, 'comfyui', 'workflows', 'audio_ace_step_1_5_checkpoint_api.json');
 const MUSIC_BACKEND_MODE = (MUSIC_BACKEND || 'comfyui').toLowerCase();
+const SD_TRANSLATE_ENABLED = String(SD_PROMPT_TRANSLATE || "false").toLowerCase() === "true";
+const SD_TRANSLATE_MODEL = SD_PROMPT_TRANSLATE_MODEL || OLLAMA_MODEL;
 
 function numEnv(v, def) {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
+}
+
+function looksJapaneseText(text) {
+  return /[\u3040-\u30ff\u3400-\u9fff]/.test(text || "");
+}
+
+async function translatePromptForSd(prompt) {
+  if (!SD_TRANSLATE_ENABLED) return { prompt, translated: false };
+  if (!looksJapaneseText(prompt)) return { prompt, translated: false };
+
+  const messages = [
+    {
+      role: "system",
+      content: "Translate the user's Stable Diffusion prompt into concise natural English. Return only the translated prompt text, no explanations, no quotes.",
+    },
+    { role: "user", content: prompt },
+  ];
+
+  const res = await fetch(OLLAMA_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: SD_TRANSLATE_MODEL,
+      messages,
+      temperature: 0.0,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Prompt translation error: ${res.status} ${res.statusText}\n${text}`);
+  }
+
+  const json = await res.json();
+  const translated = json?.choices?.[0]?.message?.content?.trim();
+  if (!translated) return { prompt, translated: false };
+  return { prompt: translated.replace(/^["']|["']$/g, ""), translated: true };
 }
 
 
@@ -1597,8 +1639,18 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.deferReply();
 
       try {
+        let promptForSd = prompt;
+        let translated = false;
+        try {
+          const t = await translatePromptForSd(prompt);
+          promptForSd = t.prompt;
+          translated = t.translated;
+        } catch (e) {
+          console.error("prompt translate failed:", e);
+        }
+
         const imagesB64 = await sdTxt2Img({
-          prompt,
+          prompt: promptForSd,
           negativePrompt: finalNegative,
           width: finalWidth,
           height: finalHeight,
@@ -1619,7 +1671,8 @@ client.on("interactionCreate", async (interaction) => {
           return new AttachmentBuilder(buf, { name: `draw_${Date.now()}_${idx + 1}.png` });
         });
 
-        const statusLine = `done. prompt: ${prompt} | size: ${finalWidth}x${finalHeight} | steps: ${finalSteps} | cfg: ${finalCfgScale} | sampler: ${finalSampler}`;
+        const translateTag = translated ? " | translated: ja->en" : "";
+        const statusLine = `done. prompt: ${prompt} | size: ${finalWidth}x${finalHeight} | steps: ${finalSteps} | cfg: ${finalCfgScale} | sampler: ${finalSampler}${translateTag}`;
         await interaction.editReply({ content: statusLine, files });
       } catch (e) {
         console.error(e);
