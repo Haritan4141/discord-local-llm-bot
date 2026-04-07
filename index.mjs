@@ -1711,8 +1711,8 @@ client.on("interactionCreate", async (interaction) => {
           return new AttachmentBuilder(buf, { name: `draw_${Date.now()}_${idx + 1}.png` });
         });
 
-        const translateTag = translated ? " | translated: ja->en" : "";
-        const statusLine = `done. prompt: ${prompt} | size: ${finalWidth}x${finalHeight} | steps: ${finalSteps} | cfg: ${finalCfgScale} | sampler: ${finalSampler}${translateTag}`;
+        const translateTag = translated ? ` | translated: ja->en | translated prompt: ${promptForSd}` : "";
+        const statusLine = `生成完了 prompt: ${prompt} | size: ${finalWidth}x${finalHeight} | steps: ${finalSteps} | cfg: ${finalCfgScale} | sampler: ${finalSampler}${translateTag}`;
         await interaction.editReply({ content: statusLine, files });
       } catch (e) {
         console.error(e);
