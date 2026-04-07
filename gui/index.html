@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Discord Local LLM Bot Control</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Local Control Panel</p>
+        <h1>Discord Local LLM Bot</h1>
+      </div>
+      <div class="status-group">
+        <span id="saveState" class="pill neutral">未保存なし</span>
+        <span id="botState" class="pill neutral">Bot 状態確認中</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel config-panel">
+        <div class="panel-head">
+          <div>
+            <h2>設定</h2>
+            <p id="envPath">.env を読み込み中です。</p>
+          </div>
+          <div class="actions">
+            <button id="reloadBtn" type="button" class="secondary">Reload</button>
+            <button id="saveBtn" type="button" class="primary">Save .env</button>
+          </div>
+        </div>
+
+        <div class="notice">
+          <strong>注意:</strong> 保存した設定は次回起動から反映されます。Bot 起動中に変更した場合は Restart Bot を使ってください。
+        </div>
+
+        <label class="toggle-line">
+          <input id="showSecrets" type="checkbox">
+          <span>Token / API Key を表示する</span>
+        </label>
+
+        <form id="configForm" class="config-form"></form>
+      </section>
+
+      <aside class="side">
+        <section class="panel">
+          <div class="panel-head compact">
+            <div>
+              <h2>Bot 操作</h2>
+              <p id="pidText">PID: -</p>
+            </div>
+          </div>
+          <div class="button-grid">
+            <button id="startBotBtn" type="button" class="primary">Start Bot</button>
+            <button id="stopBotBtn" type="button" class="danger">Stop Bot</button>
+            <button id="restartBotBtn" type="button" class="secondary">Restart Bot</button>
+            <button id="registerCommandsBtn" type="button" class="secondary">Register Commands</button>
+          </div>
+          <p class="hint">Start Bot は `node index.mjs` を GUI の子プロセスとして起動します。ログは下の欄と `bot.log` に出力されます。</p>
+        </section>
+
+        <section class="panel log-panel">
+          <div class="panel-head compact">
+            <div>
+              <h2>ログ</h2>
+              <p>Bot / GUI / コマンド登録の出力</p>
+            </div>
+            <button id="clearLogBtn" type="button" class="secondary">Clear</button>
+          </div>
+          <label class="toggle-line">
+            <input id="autoScroll" type="checkbox" checked>
+            <span>自動スクロール</span>
+          </label>
+          <pre id="logBox" class="log-box">ログを読み込み中です。</pre>
+        </section>
+      </aside>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

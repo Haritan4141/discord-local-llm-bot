@@ -4,11 +4,12 @@
   "description": "Discord bot for chatting with a local LLM and generating media via local backends.",
   "main": "index.mjs",
   "scripts": {
+    "gui": "node gui-server.mjs",
     "start": "node index.mjs",
     "register": "node register-commands.mjs",
     "clear:guild": "node clear-guild-commands.mjs",
     "clear:global": "node clear-global-commands.mjs",
-    "check": "node --check index.mjs && node --check register-commands.mjs && node --check clear-guild-commands.mjs && node --check clear-global-commands.mjs",
+    "check": "node --check index.mjs && node --check gui-server.mjs && node --check register-commands.mjs && node --check clear-guild-commands.mjs && node --check clear-global-commands.mjs",
     "test": "npm run check"
   },
   "keywords": [],

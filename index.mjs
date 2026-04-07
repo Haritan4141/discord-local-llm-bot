@@ -19,6 +19,10 @@ import {
 const {
   DISCORD_TOKEN,
   CHANNEL_IDS,
+  LLM_PROVIDER,
+  LLM_BASE_URL,
+  LLM_MODEL,
+  LLM_API_KEY,
   OLLAMA_URL,
   OLLAMA_MODEL,
   SYSTEM_PROMPT,
@@ -45,10 +49,43 @@ const allowedChannelIds = new Set(
   (CHANNEL_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
 );
 
+const LLM_PROVIDER_MODE = (LLM_PROVIDER || (LLM_BASE_URL || LLM_MODEL ? 'custom' : 'ollama')).toLowerCase();
+const LLM_MODEL_NAME = LLM_MODEL || OLLAMA_MODEL;
+
+function defaultLlmBaseUrl(provider) {
+  if (provider === 'lmstudio') return 'http://127.0.0.1:1234/v1';
+  if (provider === 'ollama') return 'http://127.0.0.1:11434/v1';
+  return '';
+}
+
+function normalizeOpenAiBaseUrl(url) {
+  let base = String(url || '').trim().replace(/\/+$/, '');
+  base = base.replace(/\/chat\/completions$/i, '');
+  return base;
+}
+
+function resolveLlmBaseUrl() {
+  if (LLM_BASE_URL) return normalizeOpenAiBaseUrl(LLM_BASE_URL);
+  if (LLM_PROVIDER) return normalizeOpenAiBaseUrl(defaultLlmBaseUrl(LLM_PROVIDER_MODE));
+  if (OLLAMA_URL) return normalizeOpenAiBaseUrl(OLLAMA_URL);
+  return normalizeOpenAiBaseUrl(defaultLlmBaseUrl(LLM_PROVIDER_MODE));
+}
+
+const LLM_BASE_URL_RESOLVED = resolveLlmBaseUrl();
+const LLM_CHAT_COMPLETIONS_URL = LLM_BASE_URL_RESOLVED
+  ? `${LLM_BASE_URL_RESOLVED}/chat/completions`
+  : '';
+
+function llmHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (LLM_API_KEY) headers.Authorization = `Bearer ${LLM_API_KEY}`;
+  return headers;
+}
+
 if (!DISCORD_TOKEN) throw new Error('DISCORD_TOKEN が .env に設定されていません');
 if (allowedChannelIds.size === 0) throw new Error('CHANNEL_IDS が .env に設定されていません');
-if (!OLLAMA_URL) throw new Error('OLLAMA_URL が .env に設定されていません');
-if (!OLLAMA_MODEL) throw new Error('OLLAMA_MODEL が .env に設定されていません');
+if (!LLM_CHAT_COMPLETIONS_URL) throw new Error('LLM_BASE_URL または OLLAMA_URL が .env に設定されていません');
+if (!LLM_MODEL_NAME) throw new Error('LLM_MODEL または OLLAMA_MODEL が .env に設定されていません');
 
 const stateByChannel = new Map();
 const musicQueue = [];
@@ -95,14 +132,14 @@ function trimHistory(hist, maxMessages = 30) {
   hist.push(sys, ...trimmed);
 }
 
-async function ollamaChat(messages) {
-  const res = await fetch(OLLAMA_URL, {
+async function localLlmChat(messages, options = {}) {
+  const res = await fetch(LLM_CHAT_COMPLETIONS_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: llmHeaders(),
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model: options.model || LLM_MODEL_NAME,
       messages,
-      temperature: 0.7,
+      temperature: options.temperature ?? 0.7,
       stream: false,
     }),
   });
@@ -139,7 +176,7 @@ const COMFY_WORKFLOW_FILE = COMFY_WORKFLOW_PATH
   : path.join(__dirname, 'comfyui', 'workflows', 'audio_ace_step_1_5_checkpoint_api.json');
 const MUSIC_BACKEND_MODE = (MUSIC_BACKEND || 'comfyui').toLowerCase();
 const SD_TRANSLATE_ENABLED = String(SD_PROMPT_TRANSLATE || "false").toLowerCase() === "true";
-const SD_TRANSLATE_MODEL = SD_PROMPT_TRANSLATE_MODEL || OLLAMA_MODEL;
+const SD_TRANSLATE_MODEL = SD_PROMPT_TRANSLATE_MODEL || LLM_MODEL_NAME;
 
 function numEnv(v, def) {
   const n = Number(v);
@@ -162,9 +199,9 @@ async function translatePromptForSd(prompt) {
     { role: "user", content: prompt },
   ];
 
-  const res = await fetch(OLLAMA_URL, {
+  const res = await fetch(LLM_CHAT_COMPLETIONS_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: llmHeaders(),
     body: JSON.stringify({
       model: SD_TRANSLATE_MODEL,
       messages,
@@ -1392,9 +1429,9 @@ async function processQueue(channelId) {
             visionUserMessage,
           ];
 
-          reply = await ollamaChat(messagesToSend);
+          reply = await localLlmChat(messagesToSend);
         } else {
-          reply = await ollamaChat(st.history);
+          reply = await localLlmChat(st.history);
         }
 
         const cleaned = (reply || "").trim();
@@ -1433,7 +1470,9 @@ const client = new Client({
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   console.log(`✅ Allowed channels: ${[...allowedChannelIds].join(', ')}`);
-  console.log(`✅ Model: ${OLLAMA_MODEL}`);
+  console.log(`✅ LLM provider: ${LLM_PROVIDER_MODE}`);
+  console.log(`✅ LLM base URL: ${LLM_BASE_URL_RESOLVED}`);
+  console.log(`✅ Model: ${LLM_MODEL_NAME}`);
 });
 
 client.on('messageCreate', async (msg) => {
@@ -1505,7 +1544,8 @@ client.on("interactionCreate", async (interaction) => {
         [
           "📊 **LLMBot ステータス**",
           `• paused: \`${paused}\``,
-          `• model: \`${process.env.OLLAMA_MODEL}\``,
+          `• llm provider: \`${LLM_PROVIDER_MODE}\``,
+          `• llm model: \`${LLM_MODEL_NAME}\``,
           `• history: \`${histLen}\` messages`,
           `• queue: \`${queueLen}\``,
           `• channel: <#${interaction.channelId}>`,
