@@ -9,4 +9,4 @@ await rest.put(
   { body: [] }
 );
 
-console.log("✅ Cleared GLOBAL commands");
+console.log("✅ Cleared GUILD commands");

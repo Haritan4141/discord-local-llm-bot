@@ -1,14 +1,19 @@
 {
   "name": "discord-local-llm-bot",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Discord bot for chatting with a local LLM and generating media via local backends.",
+  "main": "index.mjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.mjs",
+    "register": "node register-commands.mjs",
+    "clear:guild": "node clear-guild-commands.mjs",
+    "clear:global": "node clear-global-commands.mjs",
+    "check": "node --check index.mjs && node --check register-commands.mjs && node --check clear-guild-commands.mjs && node --check clear-global-commands.mjs",
+    "test": "npm run check"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3"
