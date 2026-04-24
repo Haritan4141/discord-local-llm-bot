@@ -163,6 +163,31 @@ function splitForDiscord(text, chunkSize = 1800) {
   return chunks.length ? chunks : ['(empty)'];
 }
 
+function startTypingLoop(sendTyping, intervalMs = 8000) {
+  let stopped = false;
+  let timer = null;
+
+  async function tick() {
+    if (stopped) return;
+
+    try {
+      await sendTyping();
+    } catch {}
+
+    if (stopped) return;
+
+    timer = setTimeout(tick, intervalMs);
+    if (typeof timer?.unref === 'function') timer.unref();
+  }
+
+  void tick();
+
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+}
+
 
 // ======================
 // ★ draw (AUTOMATIC1111) 画像生成
@@ -1397,6 +1422,8 @@ async function processQueue(channelId) {
           ? (item.imageAtt || null)
           : pickFirstImageAttachment(item.msg);
 
+      const stopTyping = startTypingLoop(api.typing);
+
       try {
         // 履歴には「画像あり」の印だけ残す（base64を残すと履歴が爆増するため）
         const userChunkForHistory = imageAtt
@@ -1405,8 +1432,6 @@ async function processQueue(channelId) {
 
         st.history.push({ role: "user", content: userChunkForHistory });
         trimHistory(st.history, 30);
-
-        await api.typing();
 
         // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
         let reply = "";
@@ -1449,6 +1474,8 @@ async function processQueue(channelId) {
       } catch (e) {
         console.error(e);
         await api.onError(e?.message || String(e));
+      } finally {
+        stopTyping();
       }
     }
   } finally {
