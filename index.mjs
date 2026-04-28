@@ -1443,7 +1443,7 @@ async function processQueue(channelId) {
             role: "user",
             content: [
               { type: "text", text: `${name}: ${text || "この画像について説明して"}` },
-              { type: "image_url", image_url: dataUrl },
+              { type: "image_url", image_url: { url: dataUrl } },
             ],
           };
 
