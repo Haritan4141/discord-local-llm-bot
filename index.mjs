@@ -1335,11 +1335,31 @@ function pickFirstImageAttachment(msg) {
 }
 
 function guessMimeFromUrl(url) {
-  if (/\.png$/i.test(url)) return 'image/png';
-  if (/\.jpe?g$/i.test(url)) return 'image/jpeg';
-  if (/\.webp$/i.test(url)) return 'image/webp';
-  if (/\.gif$/i.test(url)) return 'image/gif';
+  let target = String(url || '');
+  try {
+    target = new URL(target).pathname || target;
+  } catch {}
+
+  target = target.split('?')[0].split('#')[0];
+
+  if (/\.png$/i.test(target)) return 'image/png';
+  if (/\.jpe?g$/i.test(target)) return 'image/jpeg';
+  if (/\.webp$/i.test(target)) return 'image/webp';
+  if (/\.gif$/i.test(target)) return 'image/gif';
   return 'image/png';
+}
+
+function normalizeMimeForLlm(mime, url) {
+  const raw = String(mime || '').toLowerCase().split(';')[0].trim();
+  const guessed = guessMimeFromUrl(url);
+  const candidate = raw.startsWith('image/') ? raw : guessed;
+
+  if (LLM_PROVIDER_MODE === 'lmstudio') {
+    if (candidate === 'image/png' || candidate === 'image/jpeg') return candidate;
+    return 'image/png';
+  }
+
+  return candidate || 'image/png';
 }
 
 async function fetchImageForLlm(url, contentTypeHint, maxBytes = 10 * 1024 * 1024) {
@@ -1357,7 +1377,7 @@ async function fetchImageForLlm(url, contentTypeHint, maxBytes = 10 * 1024 * 102
     throw new Error(`画像が大きすぎます（${Math.round(buf.length / 1024 / 1024)}MB）。もう少し小さくしてね。`);
   }
 
-  const mime = contentTypeHint || res.headers.get('content-type') || guessMimeFromUrl(url);
+  const mime = normalizeMimeForLlm(contentTypeHint || res.headers.get('content-type') || '', url);
   const base64 = buf.toString('base64');
   return {
     mime,
@@ -1372,7 +1392,7 @@ function buildVisionImageContentPart(image) {
   }
 
   if (LLM_PROVIDER_MODE === 'lmstudio') {
-    return { type: 'image_url', image_url: { url: image.base64 } };
+    return { type: 'image_url', image_url: { url: image.dataUrl } };
   }
 
   return { type: 'image_url', image_url: { url: image.dataUrl } };

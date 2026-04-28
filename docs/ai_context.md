@@ -82,7 +82,8 @@
   - Discord の `sendTyping()` を定期送信することで、応答完了まで `LLMBot が入力中...` が消えにくいように調整
 - 画像入力の OpenAI 互換 payload を provider ごとに調整
   - Ollama は `image_url` に data URL 文字列を送る
-  - LM Studio は `image_url.url` に raw base64 を送る
+  - LM Studio は `image_url.url` に data URL 文字列を送る
+  - LM Studio は `image/webp` や `application/octet-stream` を拒否することがあるため、送信時 MIME は `image/png` / `image/jpeg` に正規化する
 
 追加された主要ファイル:
 - `gui-server.mjs`
@@ -97,7 +98,8 @@
 - 以前の Bot 起動失敗は `.env` ではなく `node_modules` 未導入が原因だった
 - `/draw` の 404 は `SD_WEBUI_URL` の到達性ではなく、AUTOMATIC1111 側で `--api` が有効でないことが原因だった
 - LM Studio は OpenAI 互換 API として扱えるため、Ollama 専用実装にしない方が保守しやすい
-- Vision 入力は provider ごとに完全互換ではなく、Ollama と LM Studio で受け付ける `image_url` の形式が異なる
+- Vision 入力は provider ごとに完全互換ではなく、Ollama は `image_url` 文字列、LM Studio は `image_url.url` object を受け付ける
+- LM Studio は Vision の data URL で `image/webp` や `application/octet-stream` を拒否することがあり、同じ画像バイト列でも `image/png` / `image/jpeg` の data URL なら通ることがある
 - 一時的に `LLM_OUTPUT_CLEANUP` を検討・実装したが、採用せずに元へ戻した。現在はその機能は存在しない
 
 採用した方針:
@@ -235,3 +237,4 @@ Git 操作の運用ルール:
   - 今後のセッション引き継ぎ用のベース文書として運用開始
   - 通常チャットの typing 表示を定期更新する変更を追記
   - Vision 入力の payload を Ollama / LM Studio で切り替える変更を追記
+  - LM Studio 向け Vision 入力の MIME 正規化を追記
