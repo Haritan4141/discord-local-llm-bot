@@ -1342,7 +1342,7 @@ function guessMimeFromUrl(url) {
   return 'image/png';
 }
 
-async function fetchAsDataUrl(url, contentTypeHint, maxBytes = 10 * 1024 * 1024) {
+async function fetchImageForLlm(url, contentTypeHint, maxBytes = 10 * 1024 * 1024) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`画像取得に失敗: ${res.status} ${res.statusText}`);
 
@@ -1359,7 +1359,23 @@ async function fetchAsDataUrl(url, contentTypeHint, maxBytes = 10 * 1024 * 1024)
 
   const mime = contentTypeHint || res.headers.get('content-type') || guessMimeFromUrl(url);
   const base64 = buf.toString('base64');
-  return `data:${mime};base64,${base64}`;
+  return {
+    mime,
+    base64,
+    dataUrl: `data:${mime};base64,${base64}`,
+  };
+}
+
+function buildVisionImageContentPart(image) {
+  if (LLM_PROVIDER_MODE === 'ollama') {
+    return { type: 'image_url', image_url: image.dataUrl };
+  }
+
+  if (LLM_PROVIDER_MODE === 'lmstudio') {
+    return { type: 'image_url', image_url: { url: image.base64 } };
+  }
+
+  return { type: 'image_url', image_url: { url: image.dataUrl } };
 }
 
 // ======================
@@ -1436,14 +1452,14 @@ async function processQueue(channelId) {
         // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
         let reply = "";
         if (imageAtt) {
-          const dataUrl = await fetchAsDataUrl(imageAtt.url, imageAtt.contentType);
+          const image = await fetchImageForLlm(imageAtt.url, imageAtt.contentType);
 
           // OpenAI互換: content を配列にして image_url を付ける
           const visionUserMessage = {
             role: "user",
             content: [
               { type: "text", text: `${name}: ${text || "この画像について説明して"}` },
-              { type: "image_url", image_url: { url: dataUrl } },
+              buildVisionImageContentPart(image),
             ],
           };
 

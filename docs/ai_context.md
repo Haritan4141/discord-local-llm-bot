@@ -80,6 +80,9 @@
   - 翻訳が入った場合に `translated prompt: ...` を表示
 - 通常チャットの typing 表示を改善
   - Discord の `sendTyping()` を定期送信することで、応答完了まで `LLMBot が入力中...` が消えにくいように調整
+- 画像入力の OpenAI 互換 payload を provider ごとに調整
+  - Ollama は `image_url` に data URL 文字列を送る
+  - LM Studio は `image_url.url` に raw base64 を送る
 
 追加された主要ファイル:
 - `gui-server.mjs`
@@ -94,6 +97,7 @@
 - 以前の Bot 起動失敗は `.env` ではなく `node_modules` 未導入が原因だった
 - `/draw` の 404 は `SD_WEBUI_URL` の到達性ではなく、AUTOMATIC1111 側で `--api` が有効でないことが原因だった
 - LM Studio は OpenAI 互換 API として扱えるため、Ollama 専用実装にしない方が保守しやすい
+- Vision 入力は provider ごとに完全互換ではなく、Ollama と LM Studio で受け付ける `image_url` の形式が異なる
 - 一時的に `LLM_OUTPUT_CLEANUP` を検討・実装したが、採用せずに元へ戻した。現在はその機能は存在しない
 
 採用した方針:
@@ -230,3 +234,4 @@ Git 操作の運用ルール:
   - 現時点の実装状況、設計判断、注意事項、Git 制約、検証状況を整理
   - 今後のセッション引き継ぎ用のベース文書として運用開始
   - 通常チャットの typing 表示を定期更新する変更を追記
+  - Vision 入力の payload を Ollama / LM Studio で切り替える変更を追記
