@@ -75,6 +75,10 @@
 - GUI で LLM モデル一覧取得に対応
   - Provider ごとのモデル取得
   - モデル候補から選択可能な UI を追加
+- `/webchat` を追加
+  - `OLLAMA_WEB_API_KEY` で Ollama Web Search / Web Fetch API を使用
+  - 検索結果はそのターンだけ追加コンテキストとして LLM に渡す
+  - 返答末尾に source URL を表示
 - `/draw` 完了メッセージを修正
   - `done.` を `生成完了` に変更
   - 翻訳が入った場合に `translated prompt: ...` を表示
@@ -98,6 +102,7 @@
 - 以前の Bot 起動失敗は `.env` ではなく `node_modules` 未導入が原因だった
 - `/draw` の 404 は `SD_WEBUI_URL` の到達性ではなく、AUTOMATIC1111 側で `--api` が有効でないことが原因だった
 - LM Studio は OpenAI 互換 API として扱えるため、Ollama 専用実装にしない方が保守しやすい
+- Ollama Web Search はローカル Ollama API ではなく Ollama のクラウド API を使うため、`OLLAMA_WEB_API_KEY` が必要
 - Vision 入力は provider ごとに完全互換ではなく、Ollama は `image_url` 文字列、LM Studio は `image_url.url` object を受け付ける
 - LM Studio は Vision の data URL で `image/webp` や `application/octet-stream` を拒否することがあり、同じ画像バイト列でも `image/png` / `image/jpeg` の data URL なら通ることがある
 - 一時的に `LLM_OUTPUT_CLEANUP` を検討・実装したが、採用せずに元へ戻した。現在はその機能は存在しない
@@ -238,3 +243,6 @@ Git 操作の運用ルール:
   - 通常チャットの typing 表示を定期更新する変更を追記
   - Vision 入力の payload を Ollama / LM Studio で切り替える変更を追記
   - LM Studio 向け Vision 入力の MIME 正規化を追記
+- 2026-05-02
+  - `/webchat` を追加
+  - `OLLAMA_WEB_API_KEY`、Ollama Web Search / Web Fetch、source URL 付き回答の仕様を追記

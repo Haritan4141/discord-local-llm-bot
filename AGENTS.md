@@ -5,9 +5,10 @@
 ## 概要
 - Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) と会話できるボット
 - 指定チャンネルのみ応答 ( `CHANNEL_IDS` )
-- 通常メッセージと `/chat` をチャンネル単位のキューで 1発言=1返信処理
+- 通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで 1発言=1返信処理
 - 画像添付は Vision 形式で LLM に送信
 - LLM Provider は `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_MODEL` で設定 (`OLLAMA_*` は fallback)
+- `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
 - `/music` で ComfyUI または ACE-Step を使った音楽生成を呼び出し
 - `/othello` でリアクション操作のオセロ (VS AI) を開始
@@ -31,6 +32,7 @@
 - Discord Bot トークン
 - Discord Application の `CLIENT_ID` と、ギルド登録用の `GUILD_ID`
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
+- Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
 - Optional: Stable Diffusion WebUI ( `--api` 起動 )
 - Optional: ComfyUI ( `--listen` 起動 ) または ACE-Step API
 
@@ -38,6 +40,7 @@
 - `.env` は機密情報を含むためコミットしない
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う
+- `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される
 - スラッシュコマンドを変更したら GUI の `Register Commands` または `node register-commands.mjs` を実行する
 - UTF-8 でファイルを保存すること

@@ -27,6 +27,16 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
+    .setName("webchat")
+    .setDescription("Web検索を使って最新情報を含めて会話します。")
+    .addStringOption(option =>
+      option
+        .setName("message")
+        .setDescription("検索しながら答えてほしい内容")
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
     .setName("pause")
     .setDescription("Botの応答を一時停止します"),
 
