@@ -23,6 +23,7 @@ const {
   LLM_BASE_URL,
   LLM_MODEL,
   LLM_API_KEY,
+  OLLAMA_KEEP_ALIVE: OLLAMA_KEEP_ALIVE_ENV,
   OLLAMA_URL,
   OLLAMA_MODEL,
   OLLAMA_WEB_API_KEY,
@@ -52,6 +53,7 @@ const allowedChannelIds = new Set(
 
 const LLM_PROVIDER_MODE = (LLM_PROVIDER || (LLM_BASE_URL || LLM_MODEL ? 'custom' : 'ollama')).toLowerCase();
 const LLM_MODEL_NAME = LLM_MODEL || OLLAMA_MODEL;
+const OLLAMA_KEEP_ALIVE = String(OLLAMA_KEEP_ALIVE_ENV || '').trim();
 
 function defaultLlmBaseUrl(provider) {
   if (provider === 'lmstudio') return 'http://127.0.0.1:1234/v1';
@@ -75,6 +77,9 @@ function resolveLlmBaseUrl() {
 const LLM_BASE_URL_RESOLVED = resolveLlmBaseUrl();
 const LLM_CHAT_COMPLETIONS_URL = LLM_BASE_URL_RESOLVED
   ? `${LLM_BASE_URL_RESOLVED}/chat/completions`
+  : '';
+const OLLAMA_NATIVE_BASE_URL = LLM_PROVIDER_MODE === 'ollama'
+  ? LLM_BASE_URL_RESOLVED.replace(/\/v1$/i, '')
   : '';
 
 function llmHeaders() {
@@ -187,6 +192,38 @@ async function localLlmChat(messages, options = {}) {
 
   const json = await res.json();
   return json?.choices?.[0]?.message?.content?.trim() || '';
+}
+
+async function preloadOllamaModel() {
+  if (LLM_PROVIDER_MODE !== 'ollama' || !OLLAMA_NATIVE_BASE_URL) return;
+
+  const body = {
+    model: LLM_MODEL_NAME,
+    stream: false,
+  };
+  if (OLLAMA_KEEP_ALIVE) body.keep_alive = OLLAMA_KEEP_ALIVE;
+
+  try {
+    const json = await fetchJsonWithTimeout(
+      `${OLLAMA_NATIVE_BASE_URL}/api/chat`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      30000
+    );
+
+    const loadDurationNs = Number(json?.load_duration || 0);
+    const loadDurationMs = Number.isFinite(loadDurationNs) && loadDurationNs > 0
+      ? Math.round(loadDurationNs / 1_000_000)
+      : null;
+    const suffix = loadDurationMs !== null ? ` (${loadDurationMs} ms)` : '';
+    const keepAliveText = OLLAMA_KEEP_ALIVE ? ` keep_alive=${OLLAMA_KEEP_ALIVE}` : '';
+    console.log(`[ollama] preload complete: ${LLM_MODEL_NAME}${keepAliveText}${suffix}`);
+  } catch (error) {
+    console.warn(`[ollama] preload failed: ${error.message}`);
+  }
 }
 
 const OLLAMA_WEB_SEARCH_URL = "https://ollama.com/api/web_search";
@@ -1719,6 +1756,11 @@ client.once('ready', () => {
   console.log(`✅ LLM provider: ${LLM_PROVIDER_MODE}`);
   console.log(`✅ LLM base URL: ${LLM_BASE_URL_RESOLVED}`);
   console.log(`✅ Model: ${LLM_MODEL_NAME}`);
+  if (LLM_PROVIDER_MODE === 'ollama') {
+    const keepAliveText = OLLAMA_KEEP_ALIVE || '(server default)';
+    console.log(`✅ Ollama keep alive: ${keepAliveText}`);
+    void preloadOllamaModel();
+  }
 });
 
 client.on('messageCreate', async (msg) => {

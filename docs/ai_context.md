@@ -246,3 +246,8 @@ Git 操作の運用ルール:
 - 2026-05-02
   - `/webchat` を追加
   - `OLLAMA_WEB_API_KEY`、Ollama Web Search / Web Fetch、source URL 付き回答の仕様を追記
+- 2026-05-06
+  - `OLLAMA_KEEP_ALIVE` を追加
+  - GUI から `OLLAMA_KEEP_ALIVE` を設定できるようにした
+  - `start-ollama.bat` が `.env` の `OLLAMA_KEEP_ALIVE` を読んで `ollama serve` を起動するようにした
+  - Bot 起動時に Ollama native `/api/chat` へ preload を1回送り、初回応答の待ち時間を減らすようにした

@@ -54,6 +54,7 @@ start-gui.bat
 
 - `SYSTEM_PROMPT`
 - `LLM_API_KEY` (通常は空。API key が必要な互換サーバー向け)
+- `OLLAMA_KEEP_ALIVE` (Ollama のモデル保持時間。例: `30m`, `1h`, `-1`)
 - `OLLAMA_WEB_API_KEY` (`/webchat` 用。Ollama account の API key)
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
@@ -76,6 +77,8 @@ Ollama は別ターミナルで起動します。
 ```bat
 start-ollama.bat
 ```
+
+`start-ollama.bat` は `.env` の `OLLAMA_KEEP_ALIVE` を読んで `ollama serve` を起動します。Bot も起動時に preload を1回送るため、初回応答の待ち時間を減らせます。
 
 CLI から直接 Bot を起動する場合:
 

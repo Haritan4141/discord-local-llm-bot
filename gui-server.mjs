@@ -37,6 +37,7 @@ const ENV_SECTIONS = [
       { key: "LLM_BASE_URL", label: "Base URL", type: "url", placeholder: "http://127.0.0.1:11434/v1", help: "OpenAI 互換 API の base URL。通常は /v1 までを指定します。" },
       { key: "LLM_MODEL", label: "Model", type: "model", required: true, placeholder: "モデル一覧を取得するか、model identifier を入力" },
       { key: "LLM_API_KEY", label: "API Key", type: "password", placeholder: "任意。Ollama / LM Studio は通常空でOK" },
+      { key: "OLLAMA_KEEP_ALIVE", label: "Ollama Keep Alive", type: "text", placeholder: "30m / 1h / -1", help: "Ollama でモデルを保持する時間。start-ollama.bat と Bot 起動時の preload で使用します。" },
       { key: "OLLAMA_WEB_API_KEY", label: "Ollama Web Search API Key", type: "password", placeholder: "/webchat 用。Ollama account の API key", help: "Ollama の Web Search / Web Fetch API を使うための key。/webchat を使わない場合は空で構いません。" },
       { key: "SYSTEM_PROMPT", label: "System Prompt", type: "textarea", placeholder: "あなたはDiscordチャンネルの会話に自然に参加するAIです。" },
     ],
@@ -157,6 +158,7 @@ function buildGuiValues(values) {
   }
   if (!next.LLM_MODEL && next.OLLAMA_MODEL) next.LLM_MODEL = next.OLLAMA_MODEL;
   if (!next.LLM_API_KEY) next.LLM_API_KEY = "";
+  if (!next.OLLAMA_KEEP_ALIVE && provider === "ollama") next.OLLAMA_KEEP_ALIVE = "30m";
   return next;
 }
 
