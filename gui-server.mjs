@@ -24,7 +24,7 @@ const ENV_SECTIONS = [
     fields: [
       { key: "DISCORD_TOKEN", label: "Bot Token", type: "password", required: true, placeholder: "your_discord_bot_token_here" },
       { key: "CLIENT_ID", label: "Application / Client ID", type: "text", required: true, placeholder: "123456789012345678" },
-      { key: "GUILD_ID", label: "Guild ID", type: "text", required: true, placeholder: "123456789012345678" },
+      { key: "GUILD_ID", label: "Guild ID(s)", type: "textarea", placeholder: "123456789012345678,987654321098765432", help: "ギルド登録用のサーバー ID。Register Guild Commands で使用します。カンマ区切りで複数指定できます。" },
       { key: "CHANNEL_IDS", label: "Allowed Channel IDs", type: "textarea", required: true, placeholder: "123456789012345678,987654321098765432", help: "Bot が反応するチャンネル ID。カンマ区切りで複数指定できます。" },
     ],
   },
@@ -338,12 +338,14 @@ function stopBot() {
   return { stopped: true, message: "Bot に停止シグナルを送りました。", status: getBotStatus() };
 }
 
-function runRegisterCommands() {
+function runRegisterCommands(mode = "guild") {
   ensureEnvFile();
   if (commandProcess) return { started: false, message: "スラッシュコマンド登録はすでに実行中です。" };
 
-  appendLog("gui", "スラッシュコマンド登録を実行します。");
-  commandProcess = spawn(process.execPath, [path.join(__dirname, "register-commands.mjs")], {
+  const args = [path.join(__dirname, "register-commands.mjs"), mode === "global" ? "--global" : "--guild"];
+  const label = mode === "global" ? "グローバル" : "ギルド";
+  appendLog("gui", `${label}スラッシュコマンド登録を実行します。`);
+  commandProcess = spawn(process.execPath, args, {
     cwd: __dirname,
     env: { ...process.env },
     stdio: ["ignore", "pipe", "pipe"],
@@ -354,11 +356,11 @@ function runRegisterCommands() {
   commandProcess.stderr.on("data", data => appendLog("commands", data));
   commandProcess.on("error", error => appendLog("commands", `process error: ${error.message}`));
   commandProcess.on("close", (code, signal) => {
-    appendLog("gui", `スラッシュコマンド登録が終了しました。code=${code ?? "null"} signal=${signal ?? "null"}`);
+    appendLog("gui", `${label}スラッシュコマンド登録が終了しました。code=${code ?? "null"} signal=${signal ?? "null"}`);
     commandProcess = null;
   });
 
-  return { started: true, message: "スラッシュコマンド登録を開始しました。" };
+  return { started: true, message: `${label}スラッシュコマンド登録を開始しました。` };
 }
 
 function jsonResponse(res, statusCode, body) {
@@ -467,8 +469,12 @@ async function handleApi(req, res, pathname) {
     return jsonResponse(res, 200, getBotStatus());
   }
 
-  if (req.method === "POST" && pathname === "/api/commands/register") {
-    return jsonResponse(res, 200, runRegisterCommands());
+  if (req.method === "POST" && pathname === "/api/commands/register-guild") {
+    return jsonResponse(res, 200, runRegisterCommands("guild"));
+  }
+
+  if (req.method === "POST" && pathname === "/api/commands/register-global") {
+    return jsonResponse(res, 200, runRegisterCommands("global"));
   }
 
   if (req.method === "GET" && pathname === "/api/logs") {

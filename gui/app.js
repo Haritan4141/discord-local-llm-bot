@@ -5,7 +5,8 @@ const reloadBtn = document.querySelector("#reloadBtn");
 const startBotBtn = document.querySelector("#startBotBtn");
 const stopBotBtn = document.querySelector("#stopBotBtn");
 const restartBotBtn = document.querySelector("#restartBotBtn");
-const registerCommandsBtn = document.querySelector("#registerCommandsBtn");
+const registerGuildCommandsBtn = document.querySelector("#registerGuildCommandsBtn");
+const registerGlobalCommandsBtn = document.querySelector("#registerGlobalCommandsBtn");
 const clearLogBtn = document.querySelector("#clearLogBtn");
 const logBox = document.querySelector("#logBox");
 const botState = document.querySelector("#botState");
@@ -190,7 +191,11 @@ function validateField(field, control) {
       valid = false;
     }
   }
-  if (value && ["CLIENT_ID", "GUILD_ID"].includes(field.key) && !/^\d{17,20}$/.test(value)) valid = false;
+  if (value && field.key === "CLIENT_ID" && !/^\d{17,20}$/.test(value)) valid = false;
+  if (value && field.key === "GUILD_ID") {
+    const ids = value.split(",").map(item => item.trim()).filter(Boolean);
+    valid = ids.length > 0 && ids.every(id => /^\d{17,20}$/.test(id));
+  }
   if (value && field.key === "CHANNEL_IDS") {
     const ids = value.split(",").map(item => item.trim()).filter(Boolean);
     valid = ids.length > 0 && ids.every(id => /^\d{17,20}$/.test(id));
@@ -368,7 +373,8 @@ reloadBtn.addEventListener("click", () => loadConfig().catch(error => showToast(
 startBotBtn.addEventListener("click", () => postAction("/api/bot/start", "Bot を起動しました。").catch(error => showToast(error.message)));
 stopBotBtn.addEventListener("click", () => postAction("/api/bot/stop", "Bot を停止します。").catch(error => showToast(error.message)));
 restartBotBtn.addEventListener("click", () => postAction("/api/bot/restart", "Bot を再起動します。").catch(error => showToast(error.message)));
-registerCommandsBtn.addEventListener("click", () => postAction("/api/commands/register", "スラッシュコマンド登録を開始しました。").catch(error => showToast(error.message)));
+registerGuildCommandsBtn.addEventListener("click", () => postAction("/api/commands/register-guild", "ギルドコマンド登録を開始しました。").catch(error => showToast(error.message)));
+registerGlobalCommandsBtn.addEventListener("click", () => postAction("/api/commands/register-global", "グローバルコマンド登録を開始しました。").catch(error => showToast(error.message)));
 clearLogBtn.addEventListener("click", async () => {
   logBox.textContent = "";
   lastSeq = 0;

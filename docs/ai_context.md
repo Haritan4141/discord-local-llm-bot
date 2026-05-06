@@ -251,3 +251,5 @@ Git 操作の運用ルール:
   - GUI から `OLLAMA_KEEP_ALIVE` を設定できるようにした
   - `start-ollama.bat` が `.env` の `OLLAMA_KEEP_ALIVE` を読んで `ollama serve` を起動するようにした
   - Bot 起動時に Ollama native `/api/chat` へ preload を1回送り、初回応答の待ち時間を減らすようにした
+  - README に Discord 招待時の OAuth2 / 権限設定と、`GUILD_ID` がコマンド登録先であることを追記した
+  - `GUILD_ID` をカンマ区切り複数対応にし、GUI に `Register Guild Commands` と `Register Global Commands` を分けて追加した

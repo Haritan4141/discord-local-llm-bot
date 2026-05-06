@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
 
 const commands = [
@@ -14,13 +14,13 @@ const commands = [
     .setName("chat")
     .setDescription("LLMに話しかけます。")
     .addStringOption(option =>
-        option
+      option
         .setName("message")
         .setDescription("送るメッセージ")
         .setRequired(false)
     )
     .addAttachmentOption(option =>
-        option
+      option
         .setName("image")
         .setDescription("一緒に送る画像（任意）")
         .setRequired(false)
@@ -177,31 +177,44 @@ const commands = [
     ),
 ].map(cmd => cmd.toJSON());
 
+function parseGuildIds(rawValue) {
+  return String(rawValue || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function resolveMode(argv) {
+  if (argv.includes("--global")) return "global";
+  if (argv.includes("--guild")) return "guild";
+  return "guild";
+}
+
+const mode = resolveMode(process.argv.slice(2));
+
+if (!process.env.DISCORD_TOKEN) throw new Error("DISCORD_TOKEN が設定されていません。");
+if (!process.env.CLIENT_ID) throw new Error("CLIENT_ID が設定されていません。");
+
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
-// ========================
-// どっちに登録するか選ぶ
-// ========================
+if (mode === "global") {
+  await rest.put(
+    Routes.applicationCommands(process.env.CLIENT_ID),
+    { body: commands }
+  );
+  console.log("✓ Global slash commands registered");
+  process.exit(0);
+}
 
-/**
- * (A) ギルド（サーバー）限定で登録（反映が速い）
- * 今使ってるならこっち
- */
-await rest.put(
-  Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-  { body: commands }
-);
-console.log("✓ Guild slash commands registered");
+const guildIds = parseGuildIds(process.env.GUILD_ID);
+if (!guildIds.length) {
+  throw new Error("GUILD_ID が設定されていません。ギルド登録ではカンマ区切りで複数指定できます。");
+}
 
-// ---- グローバルにしたい場合は上をコメントアウトして、下を有効にする ----
-
-/**
- * (B) グローバル（全サーバー）登録（反映が遅い：最大1時間程度）
- * ※ すでにギルド登録が残ってると /help が二重に見えるので、
- *    切り替える時は不要な方を空配列で消すのが安全です。
- */
-// await rest.put(
-//   Routes.applicationCommands(process.env.CLIENT_ID),
-//   { body: commands }
-// );
-// console.log("✓ GLOBAL slash commands registered");
+for (const guildId of guildIds) {
+  await rest.put(
+    Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+    { body: commands }
+  );
+  console.log(`✓ Guild slash commands registered: ${guildId}`);
+}

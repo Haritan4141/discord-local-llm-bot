@@ -3,10 +3,22 @@ import { REST, Routes } from "discord.js";
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
-// ギルド（テスト用即反映）コマンドを全削除
-await rest.put(
-  Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-  { body: [] }
-);
+function parseGuildIds(rawValue) {
+  return String(rawValue || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+}
 
-console.log("✅ Cleared GUILD commands");
+const guildIds = parseGuildIds(process.env.GUILD_ID);
+if (!guildIds.length) {
+  throw new Error("GUILD_ID が設定されていません。ギルド削除ではカンマ区切りで複数指定できます。");
+}
+
+for (const guildId of guildIds) {
+  await rest.put(
+    Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+    { body: [] }
+  );
+  console.log(`🧹 Cleared GUILD commands: ${guildId}`);
+}

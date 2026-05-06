@@ -31,7 +31,7 @@
 ## 実行の前提
 - Node.js 18 以降 (fetch 使用)
 - Discord Bot トークン
-- Discord Application の `CLIENT_ID` と、ギルド登録用の `GUILD_ID`
+- Discord Application の `CLIENT_ID` と、ギルド登録用の `GUILD_ID`（カンマ区切りで複数可）
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
 - Optional: Ollama model keep-alive (`OLLAMA_KEEP_ALIVE`, 例: `30m`, `1h`, `-1`)
 - Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
@@ -45,6 +45,6 @@
 - `OLLAMA_KEEP_ALIVE` は Ollama 利用時のみ有効。`-1` は常時ロードだが VRAM / RAM を占有し続ける
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される
-- スラッシュコマンドを変更したら GUI の `Register Commands` または `node register-commands.mjs` を実行する
+- スラッシュコマンドを変更したら GUI の `Register Guild Commands` / `Register Global Commands` または `node register-commands.mjs --guild|--global` を実行する
 - UTF-8 でファイルを保存すること
 - 日本語の文字化けに注意 (特に `index.mjs`, `gui/`, `.env.example`, `README.md`)

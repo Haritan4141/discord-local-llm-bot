@@ -20,7 +20,7 @@ Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) 
 - Node.js 18 以上 (fetch を使用)
 - Discord Bot トークン
 - Discord Application の `CLIENT_ID`
-- スラッシュコマンドを登録する Discord サーバーの `GUILD_ID`
+- ギルドコマンド登録を使う場合は Discord サーバーの `GUILD_ID`
 - Ollama または LM Studio (OpenAI 互換の chat/completions エンドポイント)
 - Optional: Stable Diffusion WebUI (AUTOMATIC1111, `--api` 起動)
 - Optional: ComfyUI (`--listen` 起動) または ACE-Step API
@@ -44,7 +44,6 @@ start-gui.bat
 
 - `DISCORD_TOKEN`
 - `CLIENT_ID`
-- `GUILD_ID`
 - `CHANNEL_IDS` (カンマ区切りで複数可)
 - `LLM_PROVIDER` (`ollama`, `lmstudio`, `custom`)
 - `LLM_BASE_URL` (例: Ollama `http://127.0.0.1:11434/v1`, LM Studio `http://127.0.0.1:1234/v1`)
@@ -52,6 +51,7 @@ start-gui.bat
 
 任意の値:
 
+- `GUILD_ID` (ギルドコマンド登録用。カンマ区切りで複数可)
 - `SYSTEM_PROMPT`
 - `LLM_API_KEY` (通常は空。API key が必要な互換サーバー向け)
 - `OLLAMA_KEEP_ALIVE` (Ollama のモデル保持時間。例: `30m`, `1h`, `-1`)
@@ -64,9 +64,76 @@ start-gui.bat
 
 旧 `.env` の `OLLAMA_URL` / `OLLAMA_MODEL` は fallback として残せます。新しい `LLM_*` が設定されている場合は `LLM_*` が優先されます。
 
+### Discord Bot をサーバーに招待する設定
+
+Discord Developer Portal の `OAuth2` で次を設定します。
+
+- Scope:
+  - `bot`
+  - `applications.commands`
+- Integration Type:
+  - `Guild Install`
+
+Bot Permissions は最低限、次を付けてください。
+
+- `View Channels`
+- `Send Messages`
+- `Read Message History`
+- `Attach Files`
+- `Add Reactions`
+- `Use Slash Commands`
+
+`/othello` を使う場合は追加で:
+
+- `Manage Messages`
+
+スレッド内でも使う場合は追加で:
+
+- `Send Messages in Threads`
+
+Developer Portal の `Bot` タブでは、通常メッセージを読むために `Message Content Intent` を ON にしてください。
+
+### `GUILD_ID` と複数サーバーの関係
+
+この Bot の現在の実装では、実行時にどのサーバーで反応するかは `GUILD_ID` ではなく `CHANNEL_IDS` で決まります。つまり、`CHANNEL_IDS` に入っているチャンネルであれば、複数サーバーにまたがって通常メッセージとスラッシュコマンドの受付判定が動きます。
+
+一方で、`GUILD_ID` は `register-commands.mjs` で使っているスラッシュコマンドの登録先です。ギルド登録では `GUILD_ID` にカンマ区切りで複数サーバー ID を指定できます。
+
+- 実行時の応答先: `CHANNEL_IDS`
+- コマンド登録先: `GUILD_ID`（カンマ区切り複数可）
+
+複数サーバーで Bot が動いているのに `GUILD_ID` が 1 つしかない場合、考えられる状況は次のどれかです。
+
+- 通常メッセージ応答は `CHANNEL_IDS` に含まれるチャンネルで動いている
+- スラッシュコマンドは過去に各サーバーへ個別登録され、そのまま残っている
+- 以前にグローバルコマンド登録をしていて、そのコマンドが見えている
+
+今の実装では、複数サーバーで同じスラッシュコマンドを使いたい場合は次のどちらかを選べます。
+
+- `Register Guild Commands` / `npm run register:guild`
+  - `GUILD_ID` に入っている 1 個以上のサーバーへ順番に登録
+  - 反映が速い
+- `Register Global Commands` / `npm run register:global`
+  - アプリを導入している全サーバー向けのグローバルコマンドを登録
+  - 反映は遅め（最大 1 時間程度）
+
 3. スラッシュコマンド登録
 
-GUI の `Register Commands` ボタンを押します。CLI から実行する場合は `npm run register` を使えます。`register-commands.mjs` はデフォルトでギルド登録を行います。グローバル登録に切り替える場合は、ファイル内のコメントに従って登録先を変更してください。
+GUI では次の 2 つのボタンを使えます。
+
+- `Register Guild Commands`
+  - `.env` の `GUILD_ID` に指定した 1 個以上のサーバーへ登録
+- `Register Global Commands`
+  - グローバルコマンドとして登録
+
+CLI から実行する場合:
+
+```bash
+npm run register:guild
+npm run register:global
+```
+
+`npm run register` は `npm run register:guild` と同じです。
 
 4. 起動
 
@@ -96,7 +163,7 @@ npm start
 - LLM Provider に応じて `/v1/models` からモデル一覧を取得し、`LLM_MODEL` の候補として選択可能
 - `Save .env` で設定保存
 - `Start Bot` / `Stop Bot` / `Restart Bot` で Bot プロセスを操作
-- `Register Commands` でスラッシュコマンド登録
+- `Register Guild Commands` / `Register Global Commands` でスラッシュコマンド登録
 - ログ欄に GUI / Bot / コマンド登録の出力を表示し、同時に `bot.log` にも追記
 
 ## コマンド
