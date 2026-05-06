@@ -257,3 +257,9 @@ Git 操作の運用ルール:
   - `OLLAMA_KEEP_ALIVE=-1` で preload が 400 になる問題を修正し、GUI / README / .env.example に単位例を追記した
   - Discord.js の `ready` 非推奨 warning を避けるため `clientReady` に変更した
   - 通常チャットで空応答が出たとき、Discord に警告を返し、`bot.log` に raw 応答の概要と code point preview を残すようにした
+  - Ollama の通常チャット系リクエストに `reasoning_effort: "none"` を付け、reasoning だけ出て本文が空になる挙動を抑える方向にした
+
+- 2026-05-07
+  - 通常チャットの temperature を `LLM_TEMPERATURE` で設定できるようにした
+  - 既定値は `0.4`。GUI と `.env.example` に設定項目を追加
+  - `/webchat` も同じ temperature 設定を使うように揃えた

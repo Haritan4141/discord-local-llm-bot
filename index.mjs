@@ -23,6 +23,7 @@ const {
   LLM_BASE_URL,
   LLM_MODEL,
   LLM_API_KEY,
+  LLM_TEMPERATURE,
   OLLAMA_KEEP_ALIVE: OLLAMA_KEEP_ALIVE_ENV,
   OLLAMA_URL,
   OLLAMA_MODEL,
@@ -54,6 +55,18 @@ const allowedChannelIds = new Set(
 const LLM_PROVIDER_MODE = (LLM_PROVIDER || (LLM_BASE_URL || LLM_MODEL ? 'custom' : 'ollama')).toLowerCase();
 const LLM_MODEL_NAME = LLM_MODEL || OLLAMA_MODEL;
 const OLLAMA_KEEP_ALIVE = String(OLLAMA_KEEP_ALIVE_ENV || '').trim();
+const DEFAULT_LLM_TEMPERATURE = 0.4;
+
+function resolveLlmTemperature(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return DEFAULT_LLM_TEMPERATURE;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_LLM_TEMPERATURE;
+  if (parsed < 0 || parsed > 2) return DEFAULT_LLM_TEMPERATURE;
+  return parsed;
+}
+
+const LLM_TEMPERATURE_VALUE = resolveLlmTemperature(LLM_TEMPERATURE);
 
 function normalizeOllamaKeepAliveForApi(value) {
   const raw = String(value || '').trim();
@@ -181,15 +194,21 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 15000) {
 }
 
 async function localLlmChat(messages, options = {}) {
+  const payload = {
+    model: options.model || LLM_MODEL_NAME,
+    messages,
+    temperature: options.temperature ?? LLM_TEMPERATURE_VALUE,
+    stream: false,
+  };
+
+  if (LLM_PROVIDER_MODE === 'ollama' && options.reasoningEffort) {
+    payload.reasoning_effort = options.reasoningEffort;
+  }
+
   const res = await fetch(LLM_CHAT_COMPLETIONS_URL, {
     method: 'POST',
     headers: llmHeaders(),
-    body: JSON.stringify({
-      model: options.model || LLM_MODEL_NAME,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      stream: false,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
@@ -1736,6 +1755,9 @@ async function processQueue(channelId) {
       const name = item.name;
       const text = item.text || "";
       const useWebSearch = !!item.webSearch;
+      const normalChatOptions = LLM_PROVIDER_MODE === 'ollama'
+        ? { reasoningEffort: 'none' }
+        : {};
 
       // ★画像：message は添付から拾う / interaction は item.imageAtt を使う
       const imageAtt =
@@ -1776,14 +1798,17 @@ async function processQueue(channelId) {
             visionUserMessage,
           ];
 
-          replyResult = await localLlmChat(messagesToSend);
+          replyResult = await localLlmChat(messagesToSend, normalChatOptions);
         } else if (useWebSearch) {
           const webContext = await buildWebSearchContext(text);
           sourceUrls = webContext.sources;
           const messagesToSend = buildWebChatMessages(st.history, name, text, webContext);
-          replyResult = await localLlmChat(messagesToSend, { temperature: 0.4 });
+          replyResult = await localLlmChat(messagesToSend, {
+            ...normalChatOptions,
+            temperature: LLM_TEMPERATURE_VALUE,
+          });
         } else {
-          replyResult = await localLlmChat(st.history);
+          replyResult = await localLlmChat(st.history, normalChatOptions);
         }
 
         const normalizedReplyText = stripInvisibleCharacters(replyResult?.text || '').trim();
@@ -1832,6 +1857,7 @@ client.once('clientReady', () => {
   console.log(`✅ LLM provider: ${LLM_PROVIDER_MODE}`);
   console.log(`✅ LLM base URL: ${LLM_BASE_URL_RESOLVED}`);
   console.log(`✅ Model: ${LLM_MODEL_NAME}`);
+  console.log(`✅ LLM temperature: ${LLM_TEMPERATURE_VALUE}`);
   if (LLM_PROVIDER_MODE === 'ollama') {
     const keepAliveText = OLLAMA_KEEP_ALIVE || '(server default)';
     console.log(`✅ Ollama keep alive: ${keepAliveText}`);
@@ -1911,6 +1937,7 @@ client.on("interactionCreate", async (interaction) => {
           `• paused: \`${paused}\``,
           `• llm provider: \`${LLM_PROVIDER_MODE}\``,
           `• llm model: \`${LLM_MODEL_NAME}\``,
+          `• llm temperature: \`${LLM_TEMPERATURE_VALUE}\``,
           `• ollama web search: \`${String(!!String(OLLAMA_WEB_API_KEY || "").trim())}\``,
           `• history: \`${histLen}\` messages`,
           `• queue: \`${queueLen}\``,

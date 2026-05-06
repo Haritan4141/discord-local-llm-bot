@@ -48,6 +48,7 @@ start-gui.bat
 - `LLM_PROVIDER` (`ollama`, `lmstudio`, `custom`)
 - `LLM_BASE_URL` (例: Ollama `http://127.0.0.1:11434/v1`, LM Studio `http://127.0.0.1:1234/v1`)
 - `LLM_MODEL` (例: `gemma3:12b`)
+- `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
 
 任意の値:
 
@@ -56,6 +57,8 @@ start-gui.bat
 - `LLM_API_KEY` (通常は空。API key が必要な互換サーバー向け)
 - `OLLAMA_KEEP_ALIVE` (Ollama のモデル保持時間。例: `30m`=30分, `1h`=1時間, `3600`=3600秒, `-1`=常時ロード)
 - `OLLAMA_WEB_API_KEY` (`/webchat` 用。Ollama account の API key)
+
+`LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)

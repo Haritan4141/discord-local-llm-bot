@@ -8,6 +8,7 @@
 - 通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで 1発言=1返信処理
 - 画像添付は Vision 形式で LLM に送信
 - LLM Provider は `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_MODEL` で設定 (`OLLAMA_*` は fallback)
+- 通常チャットの temperature は `LLM_TEMPERATURE` で設定。既定値は `0.4`
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
@@ -33,6 +34,7 @@
 - Discord Bot トークン
 - Discord Application の `CLIENT_ID` と、ギルド登録用の `GUILD_ID`（カンマ区切りで複数可）
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
+- Optional: chat temperature (`LLM_TEMPERATURE`, 0.0-2.0, default `0.4`)
 - Optional: Ollama model keep-alive (`OLLAMA_KEEP_ALIVE`, 例: `30m`, `1h`, `-1`)
 - Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
 - Optional: Stable Diffusion WebUI ( `--api` 起動 )
@@ -42,6 +44,7 @@
 - `.env` は機密情報を含むためコミットしない
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う
+- `LLM_TEMPERATURE` は通常チャット系の応答安定性に効く。低めほど暴走しにくい
 - `OLLAMA_KEEP_ALIVE` は Ollama 利用時のみ有効。`-1` は常時ロードだが VRAM / RAM を占有し続ける
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される

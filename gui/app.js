@@ -125,6 +125,11 @@ function createField(field, value) {
   control.value = value ?? "";
   if (field.placeholder) control.placeholder = field.placeholder;
   if (field.required) control.required = true;
+  if (field.type === "number") {
+    if (field.min !== undefined) control.min = String(field.min);
+    if (field.max !== undefined) control.max = String(field.max);
+    if (field.step !== undefined) control.step = String(field.step);
+  }
   control.addEventListener("input", () => {
     validateField(field, control);
     setDirty(true);
@@ -184,6 +189,10 @@ function validateField(field, control) {
   if (field.required && placeholderValues.has(value)) valid = false;
   if (field.key === "LLM_BASE_URL" && getFieldValue("LLM_PROVIDER") === "custom" && !value) valid = false;
   if (value && field.type === "number" && !Number.isFinite(Number(value))) valid = false;
+  if (value && field.key === "LLM_TEMPERATURE") {
+    const numeric = Number(value);
+    valid = Number.isFinite(numeric) && numeric >= 0 && numeric <= 2;
+  }
   if (value && (field.type === "url")) {
     try {
       new URL(value);
