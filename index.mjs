@@ -55,6 +55,13 @@ const LLM_PROVIDER_MODE = (LLM_PROVIDER || (LLM_BASE_URL || LLM_MODEL ? 'custom'
 const LLM_MODEL_NAME = LLM_MODEL || OLLAMA_MODEL;
 const OLLAMA_KEEP_ALIVE = String(OLLAMA_KEEP_ALIVE_ENV || '').trim();
 
+function normalizeOllamaKeepAliveForApi(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^-?\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
 function defaultLlmBaseUrl(provider) {
   if (provider === 'lmstudio') return 'http://127.0.0.1:1234/v1';
   if (provider === 'ollama') return 'http://127.0.0.1:11434/v1';
@@ -197,11 +204,12 @@ async function localLlmChat(messages, options = {}) {
 async function preloadOllamaModel() {
   if (LLM_PROVIDER_MODE !== 'ollama' || !OLLAMA_NATIVE_BASE_URL) return;
 
+  const keepAlive = normalizeOllamaKeepAliveForApi(OLLAMA_KEEP_ALIVE);
   const body = {
     model: LLM_MODEL_NAME,
     stream: false,
   };
-  if (OLLAMA_KEEP_ALIVE) body.keep_alive = OLLAMA_KEEP_ALIVE;
+  if (keepAlive !== null) body.keep_alive = keepAlive;
 
   try {
     const json = await fetchJsonWithTimeout(
@@ -1750,7 +1758,7 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   console.log(`✅ Allowed channels: ${[...allowedChannelIds].join(', ')}`);
   console.log(`✅ LLM provider: ${LLM_PROVIDER_MODE}`);

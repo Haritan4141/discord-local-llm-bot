@@ -254,3 +254,5 @@ Git 操作の運用ルール:
   - README に Discord 招待時の OAuth2 / 権限設定と、`GUILD_ID` がコマンド登録先であることを追記した
   - `GUILD_ID` をカンマ区切り複数対応にし、GUI に `Register Guild Commands` と `Register Global Commands` を分けて追加した
   - GUI に Guild / Global コマンド登録の反映速度の違いが分かる説明文を追加した
+  - `OLLAMA_KEEP_ALIVE=-1` で preload が 400 になる問題を修正し、GUI / README / .env.example に単位例を追記した
+  - Discord.js の `ready` 非推奨 warning を避けるため `clientReady` に変更した

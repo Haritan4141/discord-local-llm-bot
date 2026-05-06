@@ -54,7 +54,7 @@ start-gui.bat
 - `GUILD_ID` (ギルドコマンド登録用。カンマ区切りで複数可)
 - `SYSTEM_PROMPT`
 - `LLM_API_KEY` (通常は空。API key が必要な互換サーバー向け)
-- `OLLAMA_KEEP_ALIVE` (Ollama のモデル保持時間。例: `30m`, `1h`, `-1`)
+- `OLLAMA_KEEP_ALIVE` (Ollama のモデル保持時間。例: `30m`=30分, `1h`=1時間, `3600`=3600秒, `-1`=常時ロード)
 - `OLLAMA_WEB_API_KEY` (`/webchat` 用。Ollama account の API key)
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
