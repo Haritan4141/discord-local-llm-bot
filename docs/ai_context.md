@@ -256,3 +256,4 @@ Git 操作の運用ルール:
   - GUI に Guild / Global コマンド登録の反映速度の違いが分かる説明文を追加した
   - `OLLAMA_KEEP_ALIVE=-1` で preload が 400 になる問題を修正し、GUI / README / .env.example に単位例を追記した
   - Discord.js の `ready` 非推奨 warning を避けるため `clientReady` に変更した
+  - 通常チャットで空応答が出たとき、Discord に警告を返し、`bot.log` に raw 応答の概要と code point preview を残すようにした

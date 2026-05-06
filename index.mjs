@@ -198,7 +198,71 @@ async function localLlmChat(messages, options = {}) {
   }
 
   const json = await res.json();
-  return json?.choices?.[0]?.message?.content?.trim() || '';
+  const choice = json?.choices?.[0] || null;
+  const rawContent = choice?.message?.content ?? '';
+  let text = '';
+
+  if (typeof rawContent === 'string') {
+    text = rawContent;
+  } else if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map(part => {
+        if (typeof part === 'string') return part;
+        if (typeof part?.text === 'string') return part.text;
+        return '';
+      })
+      .join('');
+  } else if (rawContent != null) {
+    text = String(rawContent);
+  }
+
+  return {
+    text,
+    rawContent,
+    finishReason: choice?.finish_reason ?? null,
+    json,
+  };
+}
+
+function stripInvisibleCharacters(text) {
+  return String(text || '')
+    .replace(/\uFEFF/g, '')
+    .replace(/[\u200B-\u200D\u2060]/g, '');
+}
+
+function previewValueForLog(value, maxChars = 240) {
+  if (typeof value === 'string') return truncateText(value, maxChars);
+  try {
+    return truncateText(JSON.stringify(value), maxChars);
+  } catch {
+    return truncateText(String(value), maxChars);
+  }
+}
+
+function codePointPreview(text, maxChars = 24) {
+  return Array.from(String(text || '').slice(0, maxChars))
+    .map(ch => `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`)
+    .join(' ');
+}
+
+function logEmptyLlmResponse({ item, useWebSearch, imageAtt, result }) {
+  const topLevelKeys = Object.keys(result?.json || {});
+  const choice = result?.json?.choices?.[0] || {};
+  const choiceKeys = Object.keys(choice);
+  const messageKeys = Object.keys(choice?.message || {});
+  const rawPreview = previewValueForLog(result?.rawContent);
+  const textPreview = previewValueForLog(result?.text);
+  const promptPreview = truncateText(item?.text || (imageAtt ? '[image]' : ''), 120);
+
+  console.warn(
+    `[llm] empty response detected: provider=${LLM_PROVIDER_MODE} model=${LLM_MODEL_NAME} kind=${item?.kind || 'unknown'} webSearch=${useWebSearch} image=${!!imageAtt} finish_reason=${result?.finishReason ?? 'null'} prompt=${JSON.stringify(promptPreview)}`
+  );
+  console.warn(
+    `[llm] empty response details: text_length=${String(result?.text || '').length} visible_length=${stripInvisibleCharacters(result?.text || '').trim().length} raw_type=${Array.isArray(result?.rawContent) ? 'array' : typeof result?.rawContent} top_level_keys=${topLevelKeys.join(',') || '(none)'} choice_keys=${choiceKeys.join(',') || '(none)'} message_keys=${messageKeys.join(',') || '(none)'}`
+  );
+  console.warn(
+    `[llm] empty response preview: text=${JSON.stringify(textPreview)} raw=${JSON.stringify(rawPreview)} codepoints=${codePointPreview(result?.text)}`
+  );
 }
 
 async function preloadOllamaModel() {
@@ -1691,7 +1755,7 @@ async function processQueue(channelId) {
         trimHistory(st.history, 30);
 
         // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
-        let reply = "";
+        let replyResult = null;
         let sourceUrls = [];
         if (imageAtt) {
           const image = await fetchImageForLlm(imageAtt.url, imageAtt.contentType);
@@ -1712,19 +1776,23 @@ async function processQueue(channelId) {
             visionUserMessage,
           ];
 
-          reply = await localLlmChat(messagesToSend);
+          replyResult = await localLlmChat(messagesToSend);
         } else if (useWebSearch) {
           const webContext = await buildWebSearchContext(text);
           sourceUrls = webContext.sources;
           const messagesToSend = buildWebChatMessages(st.history, name, text, webContext);
-          reply = await localLlmChat(messagesToSend, { temperature: 0.4 });
+          replyResult = await localLlmChat(messagesToSend, { temperature: 0.4 });
         } else {
-          reply = await localLlmChat(st.history);
+          replyResult = await localLlmChat(st.history);
         }
 
-        const replyText = (reply || "").trim();
-        if (!replyText) continue;
-        const cleaned = appendSourceUrls(replyText, sourceUrls);
+        const normalizedReplyText = stripInvisibleCharacters(replyResult?.text || '').trim();
+        if (!normalizedReplyText) {
+          logEmptyLlmResponse({ item, useWebSearch, imageAtt, result: replyResult });
+          await api.replyFirst("⚠️ モデルが空の応答を返しました。");
+          continue;
+        }
+        const cleaned = appendSourceUrls(normalizedReplyText, sourceUrls);
 
         st.history.push({ role: "assistant", content: cleaned });
         trimHistory(st.history, 30);
