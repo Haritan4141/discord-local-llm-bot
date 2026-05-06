@@ -253,3 +253,4 @@ Git 操作の運用ルール:
   - Bot 起動時に Ollama native `/api/chat` へ preload を1回送り、初回応答の待ち時間を減らすようにした
   - README に Discord 招待時の OAuth2 / 権限設定と、`GUILD_ID` がコマンド登録先であることを追記した
   - `GUILD_ID` をカンマ区切り複数対応にし、GUI に `Register Guild Commands` と `Register Global Commands` を分けて追加した
+  - GUI に Guild / Global コマンド登録の反映速度の違いが分かる説明文を追加した
