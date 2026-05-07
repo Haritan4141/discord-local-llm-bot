@@ -193,6 +193,10 @@ function validateField(field, control) {
     const numeric = Number(value);
     valid = Number.isFinite(numeric) && numeric >= 0 && numeric <= 2;
   }
+  if (value && field.key === "LLM_MAX_HISTORY_MESSAGES") {
+    const numeric = Number(value);
+    valid = Number.isInteger(numeric) && numeric >= 0;
+  }
   if (value && (field.type === "url")) {
     try {
       new URL(value);

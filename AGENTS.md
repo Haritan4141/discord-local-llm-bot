@@ -9,6 +9,7 @@
 - 画像添付は Vision 形式で LLM に送信
 - LLM Provider は `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_MODEL` で設定 (`OLLAMA_*` は fallback)
 - 通常チャットの temperature は `LLM_TEMPERATURE` で設定。既定値は `0.4`
+- ??????? `LLM_MAX_HISTORY_MESSAGES` ???????? `30`
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し

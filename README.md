@@ -49,6 +49,7 @@ start-gui.bat
 - `LLM_BASE_URL` (例: Ollama `http://127.0.0.1:11434/v1`, LM Studio `http://127.0.0.1:1234/v1`)
 - `LLM_MODEL` (例: `gemma3:12b`)
 - `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
+- `LLM_MAX_HISTORY_MESSAGES` (?????????????????????????? `30`)
 
 任意の値:
 

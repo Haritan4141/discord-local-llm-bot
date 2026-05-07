@@ -24,6 +24,7 @@ const {
   LLM_MODEL,
   LLM_API_KEY,
   LLM_TEMPERATURE,
+  LLM_MAX_HISTORY_MESSAGES,
   OLLAMA_KEEP_ALIVE: OLLAMA_KEEP_ALIVE_ENV,
   OLLAMA_URL,
   OLLAMA_MODEL,
@@ -56,6 +57,7 @@ const LLM_PROVIDER_MODE = (LLM_PROVIDER || (LLM_BASE_URL || LLM_MODEL ? 'custom'
 const LLM_MODEL_NAME = LLM_MODEL || OLLAMA_MODEL;
 const OLLAMA_KEEP_ALIVE = String(OLLAMA_KEEP_ALIVE_ENV || '').trim();
 const DEFAULT_LLM_TEMPERATURE = 0.4;
+const DEFAULT_LLM_MAX_HISTORY_MESSAGES = 30;
 
 function resolveLlmTemperature(value) {
   const raw = String(value ?? '').trim();
@@ -67,6 +69,17 @@ function resolveLlmTemperature(value) {
 }
 
 const LLM_TEMPERATURE_VALUE = resolveLlmTemperature(LLM_TEMPERATURE);
+
+function resolveLlmMaxHistoryMessages(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return DEFAULT_LLM_MAX_HISTORY_MESSAGES;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed)) return DEFAULT_LLM_MAX_HISTORY_MESSAGES;
+  if (parsed < 0) return DEFAULT_LLM_MAX_HISTORY_MESSAGES;
+  return parsed;
+}
+
+const LLM_MAX_HISTORY_MESSAGES_VALUE = resolveLlmMaxHistoryMessages(LLM_MAX_HISTORY_MESSAGES);
 
 function normalizeOllamaKeepAliveForApi(value) {
   const raw = String(value || '').trim();
@@ -256,6 +269,39 @@ function previewValueForLog(value, maxChars = 240) {
   } catch {
     return truncateText(String(value), maxChars);
   }
+}
+
+function estimateHistoryCharCount(messages) {
+  return (messages || []).reduce((sum, message) => {
+    const content = message?.content;
+    if (typeof content === 'string') return sum + content.length;
+    if (Array.isArray(content)) {
+      return sum + content.reduce((inner, part) => {
+        if (typeof part === 'string') return inner + part.length;
+        if (typeof part?.text === 'string') return inner + part.text.length;
+        if (typeof part?.image_url === 'string') return inner + part.image_url.length;
+        if (typeof part?.image_url?.url === 'string') return inner + part.image_url.url.length;
+        return inner;
+      }, 0);
+    }
+    if (content == null) return sum;
+    return sum + String(content).length;
+  }, 0);
+}
+
+function logLlmTimeout({ error, messages, item, useWebSearch, imageAtt }) {
+  const causeCode = error?.cause?.code || '';
+  if (causeCode !== 'UND_ERR_HEADERS_TIMEOUT') return;
+
+  const messageCount = Array.isArray(messages) ? messages.length : 0;
+  const historyMessageCount = Math.max(0, messageCount - 1);
+  const historyCharCount = estimateHistoryCharCount(messages);
+  const lastUserLength = String(item?.text || '').length;
+  const promptPreview = truncateText(item?.text || '', 200);
+
+  console.log(
+    `[llm] headers timeout: provider=${LLM_PROVIDER_MODE} model=${LLM_MODEL_NAME} kind=${item?.kind || 'unknown'} webSearch=${useWebSearch} image=${!!imageAtt} history_message_count=${historyMessageCount} history_char_count=${historyCharCount} max_history_messages=${LLM_MAX_HISTORY_MESSAGES_VALUE} last_user_length=${lastUserLength} prompt=${JSON.stringify(promptPreview)}`
+  );
 }
 
 function codePointPreview(text, maxChars = 24) {
@@ -1774,11 +1820,12 @@ async function processQueue(channelId) {
           : `${name}: ${text}`;
 
         st.history.push({ role: "user", content: userChunkForHistory });
-        trimHistory(st.history, 30);
+        trimHistory(st.history, LLM_MAX_HISTORY_MESSAGES_VALUE);
 
         // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
         let replyResult = null;
         let sourceUrls = [];
+        let messagesToSend = st.history;
         if (imageAtt) {
           const image = await fetchImageForLlm(imageAtt.url, imageAtt.contentType);
 
@@ -1793,7 +1840,7 @@ async function processQueue(channelId) {
 
           // st.historyの末尾（さっき積んだ userChunkForHistory）を置き換えて送る
           // ※履歴自体は軽いまま維持しつつ、送信時だけ画像を添付するため
-          const messagesToSend = [
+          messagesToSend = [
             ...st.history.slice(0, -1),
             visionUserMessage,
           ];
@@ -1802,13 +1849,13 @@ async function processQueue(channelId) {
         } else if (useWebSearch) {
           const webContext = await buildWebSearchContext(text);
           sourceUrls = webContext.sources;
-          const messagesToSend = buildWebChatMessages(st.history, name, text, webContext);
+          messagesToSend = buildWebChatMessages(st.history, name, text, webContext);
           replyResult = await localLlmChat(messagesToSend, {
             ...normalChatOptions,
             temperature: LLM_TEMPERATURE_VALUE,
           });
         } else {
-          replyResult = await localLlmChat(st.history, normalChatOptions);
+          replyResult = await localLlmChat(messagesToSend, normalChatOptions);
         }
 
         const normalizedReplyText = stripInvisibleCharacters(replyResult?.text || '').trim();
@@ -1820,7 +1867,7 @@ async function processQueue(channelId) {
         const cleaned = appendSourceUrls(normalizedReplyText, sourceUrls);
 
         st.history.push({ role: "assistant", content: cleaned });
-        trimHistory(st.history, 30);
+        trimHistory(st.history, LLM_MAX_HISTORY_MESSAGES_VALUE);
 
         // 返信（1通目は返信、2通目以降は追加送信）
         const parts = splitForDiscord(cleaned);
@@ -1829,6 +1876,7 @@ async function processQueue(channelId) {
           await api.sendMore(parts[i]);
         }
       } catch (e) {
+        logLlmTimeout({ error: e, messages: messagesToSend, item, useWebSearch, imageAtt });
         console.error(e);
         await api.onError(e?.message || String(e));
       } finally {
