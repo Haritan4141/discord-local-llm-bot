@@ -265,5 +265,10 @@ Git 操作の運用ルール:
   - `/webchat` も同じ temperature 設定を使うように揃えた
 
 - 2026-05-07
-  - `LLM_MAX_HISTORY_MESSAGES` ?????GUI ???????????????????
-  - timeout ??????????????????? `bot.log` ????????
+  - `LLM_MAX_HISTORY_MESSAGES` を追加し、GUI から履歴件数を変更できるようにした
+  - timeout 時に履歴件数や文字数を `bot.log` に出す診断ログを追加した
+
+- 2026-05-07
+  - 現在日時情報 (Asia/Tokyo) を system message として毎回注入するようにした
+  - `WEB_SEARCH_MODE` を追加し、`manual` / `auto` を GUI から切り替えられるようにした
+  - `auto` では通常チャットでも router が検索要否と検索クエリを判定し、必要時のみ Ollama Web Search を使うようにした

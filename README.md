@@ -49,7 +49,8 @@ start-gui.bat
 - `LLM_BASE_URL` (例: Ollama `http://127.0.0.1:11434/v1`, LM Studio `http://127.0.0.1:1234/v1`)
 - `LLM_MODEL` (例: `gemma3:12b`)
 - `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
-- `LLM_MAX_HISTORY_MESSAGES` (?????????????????????????? `30`)
+- `LLM_MAX_HISTORY_MESSAGES` (保持する会話履歴メッセージ数。既定値 `30`)
+- `WEB_SEARCH_MODE` (`manual` = `/webchat` のときだけ検索, `auto` = 通常チャットでも毎ターン検索要否を判定)
 
 任意の値:
 
@@ -60,6 +61,7 @@ start-gui.bat
 - `OLLAMA_WEB_API_KEY` (`/webchat` 用。Ollama account の API key)
 
 `LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
+`WEB_SEARCH_MODE=auto` にすると、通常チャットでも LLM がそのターンで検索が必要かを判定し、必要なときだけ Ollama Web Search を使います。`manual` の場合は従来どおり `/webchat` のときだけ検索します。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)

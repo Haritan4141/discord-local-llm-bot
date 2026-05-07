@@ -9,7 +9,8 @@
 - 画像添付は Vision 形式で LLM に送信
 - LLM Provider は `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_MODEL` で設定 (`OLLAMA_*` は fallback)
 - 通常チャットの temperature は `LLM_TEMPERATURE` で設定。既定値は `0.4`
-- ??????? `LLM_MAX_HISTORY_MESSAGES` ???????? `30`
+- 会話履歴件数は `LLM_MAX_HISTORY_MESSAGES` で設定。既定値は `30`
+- Web 検索モードは `WEB_SEARCH_MODE` で設定。`manual` は `/webchat` のみ、`auto` は通常チャットでも毎ターン検索要否を判定
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
@@ -36,6 +37,7 @@
 - Discord Application の `CLIENT_ID` と、ギルド登録用の `GUILD_ID`（カンマ区切りで複数可）
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
 - Optional: chat temperature (`LLM_TEMPERATURE`, 0.0-2.0, default `0.4`)
+- Optional: web search mode (`WEB_SEARCH_MODE`, `manual` or `auto`)
 - Optional: Ollama model keep-alive (`OLLAMA_KEEP_ALIVE`, 例: `30m`, `1h`, `-1`)
 - Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
 - Optional: Stable Diffusion WebUI ( `--api` 起動 )
