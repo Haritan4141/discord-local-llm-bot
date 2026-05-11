@@ -14,6 +14,7 @@
 - 検索経路では、メッセージ中の URL を優先して直接 `web_fetch` する
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
+- `/systemprompt` でチャンネル単位の System Prompt 上書き、`/systemprompt-show` で現在設定を表示
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
 - `/music` で ComfyUI または ACE-Step を使った音楽生成を呼び出し
 - `/othello` でリアクション操作のオセロ (VS AI) を開始
@@ -73,6 +74,7 @@
 - `LLM_TEMPERATURE` は通常チャット系の応答安定性に効く。低めほど暴走しにくい
 - `OLLAMA_KEEP_ALIVE` は Ollama 利用時のみ有効。`-1` は常時ロードだが VRAM / RAM を占有し続ける
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
+- `/systemprompt` はそのチャンネルの Bot 挙動を直接変える。スラッシュコマンドを使える人なら変更できる前提で扱う
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される
 - スラッシュコマンドを変更したら GUI の `Register Guild Commands` / `Register Global Commands` または `node register-commands.mjs --guild|--global` を実行する
 - UTF-8 でファイルを保存すること

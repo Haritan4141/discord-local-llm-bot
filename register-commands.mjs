@@ -49,24 +49,24 @@ const commands = [
     .setDescription("会話コンテキストをリセットします"),
 
   new SlashCommandBuilder()
-    .setName("persona")
-    .setDescription("人格を変更・保持します。")
+    .setName("systemprompt")
+    .setDescription("このチャンネルの System Prompt を設定またはリセットします。")
     .addStringOption(option =>
       option
         .setName("text")
-        .setDescription("Persona instruction text")
+        .setDescription("このチャンネルで追加する System Prompt")
         .setRequired(false)
     )
     .addBooleanOption(option =>
       option
         .setName("reset")
-        .setDescription("Reset persona to default")
+        .setDescription("このチャンネルの System Prompt 上書きをリセット")
         .setRequired(false)
     ),
 
   new SlashCommandBuilder()
-    .setName("persona-show")
-    .setDescription("現在のpersona設定を表示します。"),
+    .setName("systemprompt-show")
+    .setDescription("現在このチャンネルで有効な System Prompt を表示します。"),
 
   new SlashCommandBuilder()
     .setName("draw")

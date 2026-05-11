@@ -228,7 +228,7 @@ Git 操作の運用ルール:
 - 構造化ロガー導入 (pino など)。現状は `console.log/warn/error` をプレフィックス付きで使用
 - Othello "最強" 難度を depth 5 から更に深く (transposition table を入れるならコード量が増える)
 - `WEB_SEARCH_MODE=auto` で URL 以外でも軽量ヒューリスティック (例: 「今」「最新」「今日」を含む短文) を判定 LLM の前段に置く
-- README/AGENTS.md と `/persona` の説明に「誰でも channel 内の Bot 挙動を書き換えられる」旨を明示
+- README/AGENTS.md と `/systemprompt` の説明に「誰でも channel 内の Bot 挙動を書き換えられる」旨を明示
 - `gui-server.mjs` 内の `readEnv` / `ensureEnvFile` も `src/utils/` 側に寄せられそうだが今回は保留
 
 ## 動作確認・検証状況
@@ -291,3 +291,8 @@ Git 操作の運用ルール:
   - テストで `trimHistory(hist, 0)` の境界バグを発見し修正 (`slice(-0)` が全体を返すため `LLM_MAX_HISTORY_MESSAGES=0` が無効化されていた)
   - `npm test` を `npm run check && node --test tests/` に拡張
   - 引き継ぎ用に本ファイルと AGENTS.md / README.md を整合
+
+- 2026-05-11
+  - `/persona` / `/persona-show` を廃止し、`/systemprompt` / `/systemprompt-show` に完全移行
+  - 旧 `--- persona override ---` を読み取りつつ、新規保存は `--- system prompt override ---` に切替
+  - README / AGENTS.md の説明も System Prompt ベースに更新

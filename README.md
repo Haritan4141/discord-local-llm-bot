@@ -10,7 +10,7 @@ Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) 
 - `/webchat` で Ollama Web Search を使った検索付き会話
 - `/webchat` や `WEB_SEARCH_MODE=auto` の検索経路では、メッセージ内の URL を優先して直接取得
 - LLM Provider として Ollama / LM Studio / Custom OpenAI 互換 API を選択
-- `/persona` によるチャンネル別の人格上書き
+- `/systemprompt` によるチャンネル別の System Prompt 上書き
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) 画像生成
 - `/music` で ComfyUI または ACE-Step による音楽生成
 - `/othello` でオセロ (VS AI) をリアクション操作でプレイ
@@ -182,14 +182,16 @@ npm start
 - `/status` : 状態表示
 - `/chat [message] [image]` : LLM と会話 (画像は任意)
 - `/webchat [message]` : Ollama Web Search を使って最新情報つきで会話
-- `/persona [text] [reset]` : 口調/人格の上書き・リセット
-- `/persona-show` : 現在の persona 設定を表示
+- `/systemprompt [text] [reset]` : このチャンネルの System Prompt を設定またはリセット
+- `/systemprompt-show` : 現在このチャンネルで有効な System Prompt を表示
 - `/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative]` : 画像生成
 - `/music prompt [duration] [lyrics] [bpm] [language]` : 音楽生成
 - `/othello [difficulty]` : オセロ開始 (リアクション操作)
 - `/pause` : そのチャンネルで停止
 - `/resume` : 再開
 - `/reset` : そのチャンネルの履歴をリセット
+
+`/systemprompt` はそのチャンネルの System Prompt を上書きするため、実行するとそのチャンネル内の Bot の挙動が変わります。スラッシュコマンドを使える人なら変更できる前提で運用してください。
 
 ## プロジェクト構成
 - `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ

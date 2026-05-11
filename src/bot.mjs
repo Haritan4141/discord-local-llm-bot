@@ -55,6 +55,9 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
+const SYSTEM_PROMPT_OVERRIDE_MARKER = '--- system prompt override ---';
+const LEGACY_PERSONA_OVERRIDE_MARKER = '--- persona override ---';
+
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   console.log(`✅ Allowed channels: ${[...allowedChannelIds].join(', ')}`);
@@ -113,8 +116,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           '• `/music` : ComfyUI で音楽生成',
           '• `/chat <message> <image>` : LLMと会話',
           '• `/webchat <message>` : Web検索を使って最新情報つきで会話',
-          '• `/persona <text>` : 人格を変更',
-          '• `/persona-show` : 現在のpersonaを表示',
+          '• `/systemprompt [text] [reset]` : System Prompt を設定またはリセット',
+          '• `/systemprompt-show` : 現在の System Prompt を表示',
           '• `/othello [difficulty]` : オセロ開始（リアクション操作）',
           '• `/pause` : 応答を一時停止',
           '• `/resume` : 応答を再開',
@@ -166,7 +169,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    if (interaction.commandName === 'persona') {
+    if (interaction.commandName === 'systemprompt') {
       const reset = !!interaction.options.getBoolean('reset');
       const text = (interaction.options.getString('text') || '').trim();
       const base = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
@@ -177,7 +180,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         await interaction.reply(
           [
-            'persona reset to default.',
+            'System Prompt をデフォルトに戻しました。',
             '',
             '```',
             base,
@@ -188,11 +191,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (!text) {
-        await interaction.reply('Provide `text` or set `reset:true`.');
+        await interaction.reply('`text` を指定するか `reset:true` を設定してください。');
         return;
       }
 
-      const newSystem = [base, '', '--- persona override ---', text].join('\n');
+      const newSystem = [base, '', SYSTEM_PROMPT_OVERRIDE_MARKER, text].join('\n');
       if (st.history?.[0]?.role === 'system') {
         st.history[0].content = newSystem;
       } else if (st.history) {
@@ -202,7 +205,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const preview = text.length > 1000 ? `${text.slice(0, 1000)}…` : text;
       await interaction.reply(
         [
-          'persona updated. 人格設定完了。',
+          'System Prompt を更新しました。',
           '',
           '```',
           preview || '(empty)',
@@ -212,14 +215,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    if (interaction.commandName === 'persona-show') {
+    if (interaction.commandName === 'systemprompt-show') {
       const base = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
       let current = base;
       if (st.history?.[0]?.role === 'system') {
         current = st.history[0].content || base;
       }
 
-      const marker = '--- persona override ---';
+      const marker =
+        [SYSTEM_PROMPT_OVERRIDE_MARKER, LEGACY_PERSONA_OVERRIDE_MARKER].find(value =>
+          current.includes(value),
+        ) || SYSTEM_PROMPT_OVERRIDE_MARKER;
       let baseText = current;
       let overrideText = '';
       const idx = current.indexOf(marker);
@@ -230,10 +236,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         baseText = current.trim();
       }
 
-      const header = '🧩 **persona 現在設定**';
+      const header = '🧩 **System Prompt 現在設定**';
       const status = `• override: ${overrideText ? 'あり' : 'なし'}`;
       const body = overrideText
-        ? `${baseText}\n\n${marker}\n${overrideText}`
+        ? `${baseText}\n\n${SYSTEM_PROMPT_OVERRIDE_MARKER}\n${overrideText}`
         : baseText || base;
 
       await interaction.reply([header, status, '', '```', body, '```'].join('\n'));
