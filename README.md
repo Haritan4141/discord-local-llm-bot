@@ -7,6 +7,7 @@ Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) 
 - 通常メッセージと `/chat` の 1発言=1返信キュー処理
 - 会話履歴の簡易保持 (`LLM_MAX_HISTORY_MESSAGES`、既定値 30)
 - 画像添付を Vision 形式で LLM に送信
+- 通常メッセージのテキスト添付 (`.txt` など) を読み取り
 - `/webchat` で Ollama Web Search を使った検索付き会話
 - `/webchat` や `WEB_SEARCH_MODE=auto` の検索経路では、メッセージ内の URL を優先して直接取得
 - LLM Provider として Ollama / LM Studio / Custom OpenAI 互換 API を選択
@@ -242,6 +243,12 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 - 対応 MIME: `image/png`, `image/jpeg`, `image/webp` (GIF は不可)
 - 10MB を超える画像は拒否
 - 履歴には画像本体ではなく `[画像あり]` の印だけを残し、そのターンだけ Vision 形式で送信
+
+## テキスト添付
+- Discord で長文が `message.txt` 添付になった場合でも、通常メッセージなら最初のテキスト添付 1 件を自動で読みます
+- 対応拡張子 / MIME: `.txt`, `.md`, `.json`, `.csv`, `.tsv`, `.log`
+- UTF-8 前提、最大 256KB まで。長すぎる場合は先頭 20,000 文字に切ってそのターンだけ LLM に渡します
+- 履歴には本文全文ではなく `[text attachment: ...]` のプレースホルダだけ残します
 
 ## `/webchat`
 ```text

@@ -7,6 +7,7 @@
 - 指定チャンネルのみ応答 ( `CHANNEL_IDS` )
 - 通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで 1発言=1返信処理
 - 画像添付は Vision 形式で LLM に送信
+- 通常メッセージのテキスト添付 (`.txt` など) も読み取り可能
 - LLM Provider は `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_MODEL` で設定 (`OLLAMA_*` は fallback)
 - 通常チャットの temperature は `LLM_TEMPERATURE` で設定。既定値は `0.4`
 - 会話履歴件数は `LLM_MAX_HISTORY_MESSAGES` で設定。既定値は `30`
@@ -36,6 +37,7 @@
 - `src/web/router.mjs` : `WEB_SEARCH_MODE=auto` の判定 LLM
 - `src/discord/state.mjs` : チャンネル単位の履歴と `trimHistory`
 - `src/discord/images.mjs` : 画像添付ヘルパ (`pickImageFromInteraction`, `fetchImageForLlm` 等)
+- `src/discord/text-attachments.mjs` : テキスト添付の判定と本文取得
 - `src/discord/typing.mjs` : "入力中..." 定期送信
 - `src/discord/queue.mjs` : `processQueue` (画像 / 通常 / web 検索の分岐含む)
 - `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
@@ -74,6 +76,7 @@
 - `LLM_TEMPERATURE` は通常チャット系の応答安定性に効く。低めほど暴走しにくい
 - `OLLAMA_KEEP_ALIVE` は Ollama 利用時のみ有効。`-1` は常時ロードだが VRAM / RAM を占有し続ける
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
+- Discord で長文が `message.txt` 添付になった場合でも、通常メッセージなら最初のテキスト添付 1 件を自動で読む
 - `/systemprompt` はそのチャンネルの Bot 挙動を直接変える。スラッシュコマンドを使える人なら変更できる前提で扱う
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される
 - スラッシュコマンドを変更したら GUI の `Register Guild Commands` / `Register Global Commands` または `node register-commands.mjs --guild|--global` を実行する

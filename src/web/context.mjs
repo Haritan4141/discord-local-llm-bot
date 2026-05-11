@@ -100,7 +100,7 @@ export async function buildWebSearchContext(input) {
   };
 }
 
-export function buildWebChatMessages(history, name, text, webContext) {
+export function buildWebChatMessages(history, userText, webContext) {
   return [
     ...history.slice(0, -1),
     {
@@ -117,7 +117,7 @@ export function buildWebChatMessages(history, name, text, webContext) {
     {
       role: 'user',
       content: [
-        `${name}: ${text}`,
+        userText,
         '',
         '[Web search context]',
         webContext.contextText,

@@ -296,3 +296,5 @@ Git 操作の運用ルール:
   - `/persona` / `/persona-show` を廃止し、`/systemprompt` / `/systemprompt-show` に完全移行
   - 旧 `--- persona override ---` を読み取りつつ、新規保存は `--- system prompt override ---` に切替
   - README / AGENTS.md の説明も System Prompt ベースに更新
+- 2026-05-11
+  - 通常メッセージで最初のテキスト添付 1 件 (`.txt` / `.md` / `.json` / `.csv` / `.tsv` / `.log`) を自動読取。履歴にはプレースホルダのみ保持し、そのターンだけ LLM に本文を渡す
