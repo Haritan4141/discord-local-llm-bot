@@ -20,12 +20,33 @@
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
 
 ## 主要ファイル
-- `index.mjs` : 本体 (Discord 受信、Ollama 連携、スラッシュコマンド処理)
+- `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
+- `src/bot.mjs` : Discord クライアントと全スラッシュコマンドハンドラ
+- `src/config.mjs` : `.env` 読込、検証、ランタイム定数 (LLM_*, SD_*, MUSIC_*, BOT_TIMEZONE など)
+- `src/utils/llm-config.mjs` : base URL 正規化、`numEnv`、`normalizeOllamaKeepAliveForApi` (`gui-server.mjs` からも共有)
+- `src/utils/env-file.mjs` : `.env` パース / フォーマット (`gui-server.mjs` から共有)
+- `src/utils/text.mjs` : `truncateText`, `splitForDiscord`, 不可視文字除去
+- `src/utils/http.mjs` : `fetchJsonWithTimeout`, `sleep`
+- `src/llm/chat.mjs` : OpenAI 互換チャット呼び出し、`preloadOllamaModel`、日時注入
+- `src/llm/diagnostics.mjs` : timeout / 空応答のログ
+- `src/web/urls.mjs` : URL 抽出と正規化 (パレン残高判定込み)
+- `src/web/ollama-search.mjs` : Ollama web_search / web_fetch
+- `src/web/context.mjs` : web 検索結果から LLM へ渡すコンテキスト構築
+- `src/web/router.mjs` : `WEB_SEARCH_MODE=auto` の判定 LLM
+- `src/discord/state.mjs` : チャンネル単位の履歴と `trimHistory`
+- `src/discord/images.mjs` : 画像添付ヘルパ (`pickImageFromInteraction`, `fetchImageForLlm` 等)
+- `src/discord/typing.mjs` : "入力中..." 定期送信
+- `src/discord/queue.mjs` : `processQueue` (画像 / 通常 / web 検索の分岐含む)
+- `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
+- `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
+- `src/othello/board.mjs` / `ai.mjs` / `render.mjs` / `game.mjs` : 盤面・AI・PNG 描画・進行
 - `gui-server.mjs` : ローカル GUI サーバー (`http://127.0.0.1:3150`)
 - `gui/` : GUI の HTML/CSS/JS
 - `register-commands.mjs` : スラッシュコマンド登録
 - `clear-guild-commands.mjs` / `clear-global-commands.mjs` : 登録済みコマンド削除
+- `tests/` : `node --test` 用ユニットテスト (純関数中心)
 - `README.md` : 使い方・セットアップ手順
+- `docs/ai_context.md` : セッションをまたぐ引き継ぎノート
 - `.env` / `.env.example` : 環境変数 (秘密情報に注意)
 - `comfyui/workflows/` : `/music` 用 ComfyUI workflow
 - `start-gui.bat` : GUI 起動
@@ -39,6 +60,7 @@
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
 - Optional: chat temperature (`LLM_TEMPERATURE`, 0.0-2.0, default `0.4`)
 - Optional: web search mode (`WEB_SEARCH_MODE`, `manual` or `auto`)
+- Optional: chat timezone (`BOT_TIMEZONE`, IANA name, default `Asia/Tokyo`)
 - Optional: Ollama model keep-alive (`OLLAMA_KEEP_ALIVE`, 例: `30m`, `1h`, `-1`)
 - Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
 - Optional: Stable Diffusion WebUI ( `--api` 起動 )
@@ -54,4 +76,6 @@
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される
 - スラッシュコマンドを変更したら GUI の `Register Guild Commands` / `Register Global Commands` または `node register-commands.mjs --guild|--global` を実行する
 - UTF-8 でファイルを保存すること
-- 日本語の文字化けに注意 (特に `index.mjs`, `gui/`, `.env.example`, `README.md`)
+- 日本語の文字化けに注意 (特に `src/**/*.mjs`, `gui/`, `.env.example`, `README.md`)
+- GUI は起動毎にランダムな `X-GUI-Token` を発行し、`Host` / `Origin` ヘッダも検証する。改造する際は `gui/index.html` の `<meta name="gui-token">` と `gui/app.js` の `GUI_TOKEN` を維持すること
+- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 46 件) が走る。純関数を変更したら必要に応じてテストを追加する

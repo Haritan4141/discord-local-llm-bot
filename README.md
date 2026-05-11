@@ -1,11 +1,11 @@
 # discord-local-llm-bot
 
-Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Ollama Web Search を使う `/webchat`、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
+Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Ollama Web Search を使う `/webchat`、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
 
 ## 主な機能
 - 指定チャンネルのみ応答 (`CHANNEL_IDS` で制限)
 - 通常メッセージと `/chat` の 1発言=1返信キュー処理
-- 会話履歴の簡易保持 (最大 30 メッセージ)
+- 会話履歴の簡易保持 (`LLM_MAX_HISTORY_MESSAGES`、既定値 30)
 - 画像添付を Vision 形式で LLM に送信
 - `/webchat` で Ollama Web Search を使った検索付き会話
 - `/webchat` や `WEB_SEARCH_MODE=auto` の検索経路では、メッセージ内の URL を優先して直接取得
@@ -191,10 +191,31 @@ npm start
 - `/resume` : 再開
 - `/reset` : そのチャンネルの履歴をリセット
 
+## プロジェクト構成
+- `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
+- `src/bot.mjs` : Discord クライアントと全スラッシュコマンドハンドラ
+- `src/config.mjs` : `.env` 読込、検証、ランタイム定数
+- `src/utils/` : 共通ユーティリティ (`llm-config`, `env-file`, `text`, `http`)。`gui-server.mjs` からも import
+- `src/llm/` : OpenAI 互換チャットクライアントと診断ログ
+- `src/web/` : Ollama Web Search、コンテキスト生成、auto-route 判定
+- `src/discord/` : チャンネル状態、画像添付、typing ループ、キュー処理
+- `src/sd/` : Stable Diffusion txt2img、日本語プロンプト翻訳
+- `src/music/` : ComfyUI / ACE-Step 共通キュー
+- `src/othello/` : 盤面・AI・PNG 描画・ゲーム進行
+- `gui-server.mjs` : ローカル GUI サーバー
+- `gui/` : GUI の HTML / CSS / JS
+- `tests/` : `node --test` 用ユニットテスト
+
+## テスト
+- `npm run check` : 全 `.mjs` ファイルの構文チェック
+- `npm test` : `npm run check` + `node --test tests/` (現在 46 件、純関数を網羅)
+
 ## `/draw` 例
 ```text
 /draw prompt:"a cute cat" width:512 height:512 steps:25 cfg:7 sampler:"Euler a"
 ```
+
+数値オプションは事故防止のためにクランプされます: `width` / `height` は 64〜2048、`steps` は 1〜150、`cfg` は 1〜30、`batch` は 1〜4。
 
 日本語プロンプトを英語に翻訳して SD WebUI に送る場合:
 
@@ -212,8 +233,11 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 
 `MUSIC_BACKEND=comfyui` がデフォルトです。ComfyUI を使う場合は `COMFY_URL` と、必要に応じて `COMFY_WORKFLOW_PATH` を設定します。ACE-Step API を使う場合は `MUSIC_BACKEND=ace` と `ACE_URL` を設定します。
 
+生成されたファイルサイズが 24MB を超えると Discord にアップロードできないため、Bot 側で検知して案内メッセージだけを返します。長尺は `duration` を短くするか、低 bitrate の出力に切り替えてください。
+
 ## 画像入力
 - 通常メッセージの画像添付と `/chat image:<画像>` に対応
+- 対応 MIME: `image/png`, `image/jpeg`, `image/webp` (GIF は不可)
 - 10MB を超える画像は拒否
 - 履歴には画像本体ではなく `[画像あり]` の印だけを残し、そのターンだけ Vision 形式で送信
 
@@ -226,7 +250,8 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 - Web 検索自体は Ollama のクラウド API を使うため、インターネット接続が必要です
 - Bot が `web_search` で候補を取得し、`web_fetch` で本文を取りに行ってから LLM に渡します
 - 返答の末尾に参照した source URL を表示します
-- 通常の `/chat` や通常メッセージでは Web 検索しません
+- `WEB_SEARCH_MODE=manual` では `/webchat` のときだけ検索します
+- `WEB_SEARCH_MODE=auto` では通常メッセージや `/chat` でもターンごとに検索要否を判定し、必要なときだけ検索します
 - 検索結果はトークンを多く使うため、Ollama / LM Studio の context length は大きめ推奨です
 
 ## Remote Connection Example
