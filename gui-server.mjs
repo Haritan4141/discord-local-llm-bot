@@ -5,6 +5,16 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+import {
+  defaultLlmBaseUrl,
+  nativeOllamaBaseUrl,
+  normalizeOpenAiBaseUrl,
+} from "./src/utils/llm-config.mjs";
+import {
+  formatEnvValue,
+  parseEnvContent,
+} from "./src/utils/env-file.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -117,54 +127,10 @@ function ensureEnvFile() {
   return true;
 }
 
-function parseEnvValue(rawValue) {
-  const value = String(rawValue ?? "").trim();
-  if (value.length < 2) return value;
-  const first = value[0];
-  const last = value[value.length - 1];
-  if (first === "\"" && last === "\"") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value.slice(1, -1).replace(/\\n/g, "\n").replace(/\\"/g, "\"");
-    }
-  }
-  if (first === "'" && last === "'") return value.slice(1, -1);
-  return value;
-}
-
-function parseEnvContent(content) {
-  const values = {};
-  const orderedKeys = [];
-  const lines = content.split(/\r?\n/);
-
-  for (const line of lines) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
-    if (!match) continue;
-    const key = match[1];
-    values[key] = parseEnvValue(match[2]);
-    orderedKeys.push(key);
-  }
-
-  return { values, orderedKeys };
-}
-
 function readEnv() {
   ensureEnvFile();
   const content = fs.readFileSync(ENV_FILE, "utf8");
   return parseEnvContent(content);
-}
-
-function defaultLlmBaseUrl(provider) {
-  if (provider === "lmstudio") return "http://127.0.0.1:1234/v1";
-  if (provider === "ollama") return "http://127.0.0.1:11434/v1";
-  return "";
-}
-
-function normalizeOpenAiBaseUrl(url) {
-  let base = String(url || "").trim().replace(/\/+$/, "");
-  base = base.replace(/\/chat\/completions$/i, "");
-  return base;
 }
 
 function buildGuiValues(values) {
@@ -184,10 +150,6 @@ function buildGuiValues(values) {
   if (!next.LLM_API_KEY) next.LLM_API_KEY = "";
   if (!next.OLLAMA_KEEP_ALIVE && provider === "ollama") next.OLLAMA_KEEP_ALIVE = "30m";
   return next;
-}
-
-function nativeOllamaBaseUrl(baseUrl) {
-  return normalizeOpenAiBaseUrl(baseUrl).replace(/\/v1$/i, "");
 }
 
 function modelHeaders(apiKey) {
@@ -253,13 +215,6 @@ async function listLlmModels({ provider, baseUrl, apiKey }) {
     });
     return normalizeModelList(tagsJson);
   }
-}
-
-function formatEnvValue(value) {
-  const text = String(value ?? "");
-  if (!text) return "";
-  if (/[\r\n#="'`]|^\s|\s$/.test(text)) return JSON.stringify(text);
-  return text;
 }
 
 function writeEnv(updates) {
