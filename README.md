@@ -52,6 +52,7 @@ start-gui.bat
 - `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
 - `LLM_MAX_HISTORY_MESSAGES` (保持する会話履歴メッセージ数。既定値 `30`)
 - `WEB_SEARCH_MODE` (`manual` = `/webchat` のときだけ検索, `auto` = 通常チャットでも毎ターン検索要否を判定)
+- `BOT_TIMEZONE` (LLM に渡す現在時刻の IANA タイムゾーン。既定値 `Asia/Tokyo`)
 
 任意の値:
 
@@ -167,6 +168,8 @@ npm start
 - 起動: `start-gui.bat` または `npm run gui`
 - URL: `http://127.0.0.1:3150`
 - デフォルトではローカルホスト (`127.0.0.1`) のみに bind
+- 起動毎にランダムなセッショントークンを生成して `index.html` に埋め込み、API 呼び出しは `X-GUI-Token` ヘッダで検証
+- `Host` / `Origin` ヘッダも検証するため、DNS rebinding や他オリジンからの CSRF を遮断
 - `.env` がない場合は `.env.example` から自動作成
 - LLM Provider に応じて `/v1/models` からモデル一覧を取得し、`LLM_MODEL` の候補として選択可能
 - `Save .env` で設定保存

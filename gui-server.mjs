@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
@@ -15,6 +16,22 @@ const ENV_EXAMPLE_FILE = path.join(__dirname, ".env.example");
 const BOT_ENTRY = path.join(__dirname, "index.mjs");
 const LOG_FILE = path.join(__dirname, "bot.log");
 const STATIC_DIR = path.join(__dirname, "gui");
+
+// Random per-session token used to authenticate browser → GUI API calls.
+// Injected into index.html on every request; the page sends it back as
+// X-GUI-Token. Combined with Origin/Host validation, this blocks DNS-rebinding
+// and CSRF from other local services.
+const GUI_TOKEN = crypto.randomBytes(32).toString("hex");
+const GUI_TOKEN_BUF = Buffer.from(GUI_TOKEN);
+const ALLOWED_HOSTS = new Set([
+  `${HOST}:${PORT}`,
+  `127.0.0.1:${PORT}`,
+  `localhost:${PORT}`,
+]);
+const ALLOWED_ORIGINS = new Set([...ALLOWED_HOSTS].map(h => `http://${h}`));
+
+const LOG_MAX_BYTES = Number(process.env.GUI_LOG_MAX_BYTES || 5 * 1024 * 1024);
+const LOG_BACKUP_COUNT = 3;
 
 const ENV_SECTIONS = [
   {
@@ -39,6 +56,7 @@ const ENV_SECTIONS = [
       { key: "LLM_TEMPERATURE", label: "LLM Temperature", type: "number", placeholder: "0.4", min: 0, max: 2, step: 0.1, help: "Normal chat temperature. Lower values are more stable. Default: 0.4." },
       { key: "LLM_MAX_HISTORY_MESSAGES", label: "Max History Messages", type: "number", placeholder: "30", min: 0, step: 1, help: "チャンネルごとの会話履歴として保持する最大メッセージ数。system を除く件数です。少ないほど軽くなります。" },
       { key: "WEB_SEARCH_MODE", label: "Web Search Mode", type: "select", options: ["manual", "auto"], placeholder: "manual", help: "manual は /webchat のときだけ検索します。auto は通常チャットでも毎ターン検索要否を判定し、必要なときだけ検索します。" },
+      { key: "BOT_TIMEZONE", label: "Bot Timezone", type: "text", placeholder: "Asia/Tokyo", help: "LLM に渡す現在時刻のタイムゾーン。IANA 名で指定 (例: Asia/Tokyo, America/New_York)。未設定なら Asia/Tokyo。" },
       { key: "LLM_API_KEY", label: "API Key", type: "password", placeholder: "任意。Ollama / LM Studio は通常空でOK" },
       { key: "OLLAMA_KEEP_ALIVE", label: "Ollama Keep Alive", type: "text", placeholder: "30m (30分) / 1h (1時間) / -1", help: "Ollama でモデルを保持する時間。例: 30m=30分, 1h=1時間, 3600=3600秒, -1=常時ロード, 0=即アンロード。start-ollama.bat と Bot 起動時の preload で使用します。" },
       { key: "OLLAMA_WEB_API_KEY", label: "Ollama Web Search API Key", type: "password", placeholder: "/webchat 用。Ollama account の API key", help: "Ollama の Web Search / Web Fetch API を使うための key。/webchat を使わない場合は空で構いません。" },
@@ -279,12 +297,38 @@ function writeEnv(updates) {
   appendLog("gui", ".env を保存しました。変更を Bot に反映するには Bot を再起動してください。");
 }
 
+function rotateLogFileIfNeeded() {
+  let size = 0;
+  try {
+    size = fs.statSync(LOG_FILE).size;
+  } catch {
+    return;
+  }
+  if (size < LOG_MAX_BYTES) return;
+
+  try {
+    for (let i = LOG_BACKUP_COUNT - 1; i >= 1; i--) {
+      const src = `${LOG_FILE}.${i}`;
+      const dst = `${LOG_FILE}.${i + 1}`;
+      if (fs.existsSync(src)) {
+        if (i === LOG_BACKUP_COUNT - 1 && fs.existsSync(dst)) {
+          fs.unlinkSync(dst);
+        }
+        fs.renameSync(src, dst);
+      }
+    }
+    fs.renameSync(LOG_FILE, `${LOG_FILE}.1`);
+  } catch {
+    // Best-effort rotation. If it fails, fall back to appending.
+  }
+}
+
 function appendLog(source, chunk) {
   const text = String(chunk ?? "");
   if (!text) return;
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = normalized.endsWith("\n") ? normalized.slice(0, -1).split("\n") : normalized.split("\n");
-  const now = new Date().toLocaleString("ja-JP");
+  const now = new Date().toISOString();
   const entries = lines.map(line => ({
     seq: ++logSeq,
     time: now,
@@ -298,10 +342,65 @@ function appendLog(source, chunk) {
 
   const fileText = entries.map(entry => entry.text).join("\n") + "\n";
   try {
+    rotateLogFileIfNeeded();
     fs.appendFileSync(LOG_FILE, fileText, "utf8");
   } catch {
     // Logging must never crash the GUI.
   }
+}
+
+function isAllowedRequestOrigin(req) {
+  // Host header must match expected — prevents DNS rebinding.
+  const host = req.headers.host;
+  if (!host || !ALLOWED_HOSTS.has(host)) return false;
+  // If an Origin is present, it must match too (covers fetch from a page).
+  const origin = req.headers.origin;
+  if (origin && !ALLOWED_ORIGINS.has(origin)) return false;
+  return true;
+}
+
+function timingSafeStringEqual(value) {
+  if (typeof value !== "string") return false;
+  const buf = Buffer.from(value);
+  if (buf.length !== GUI_TOKEN_BUF.length) return false;
+  try {
+    return crypto.timingSafeEqual(buf, GUI_TOKEN_BUF);
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedApiRequest(req) {
+  if (!isAllowedRequestOrigin(req)) return false;
+  return timingSafeStringEqual(req.headers["x-gui-token"]);
+}
+
+function privateModelUrlAllowed(baseUrl) {
+  let parsed;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" || host === "0.0.0.0") {
+    return true;
+  }
+  // Also accept the LLM_BASE_URL the user has already saved in .env — covers
+  // remote LM Studio / Ollama configurations. Anything else is rejected to
+  // avoid arbitrary SSRF via the GUI.
+  try {
+    const { values } = readEnv();
+    const savedRaw = String(values.LLM_BASE_URL || "").trim();
+    if (savedRaw) {
+      const saved = new URL(normalizeOpenAiBaseUrl(savedRaw));
+      if (saved.hostname.toLowerCase() === host && (saved.port || "") === (parsed.port || "")) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
 }
 
 function getBotStatus() {
@@ -447,9 +546,20 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "POST" && pathname === "/api/llm/models") {
     const body = await readJsonBody(req);
+    const finalProvider = String(body.provider || "ollama").toLowerCase();
+    const finalBaseUrl = normalizeOpenAiBaseUrl(body.baseUrl || defaultLlmBaseUrl(finalProvider));
+    if (!finalBaseUrl) {
+      return jsonResponse(res, 400, { error: "LLM_BASE_URL を入力してください。" });
+    }
+    if (!privateModelUrlAllowed(finalBaseUrl)) {
+      appendLog("gui", `LLM モデル一覧の取得を拒否しました (SSRF guard): ${finalBaseUrl}`);
+      return jsonResponse(res, 403, {
+        error: "URL がローカルホストでも保存済み LLM_BASE_URL とも一致しないため拒否しました。",
+      });
+    }
     const models = await listLlmModels({
-      provider: body.provider,
-      baseUrl: body.baseUrl,
+      provider: finalProvider,
+      baseUrl: finalBaseUrl,
       apiKey: body.apiKey,
     });
     appendLog("gui", `LLM モデル一覧を取得しました。count=${models.length}`);
@@ -465,9 +575,16 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/bot/restart") {
-    const wasRunning = !!botProcess;
-    if (wasRunning) stopBot();
-    setTimeout(() => startBot(), wasRunning ? 1200 : 0);
+    const previous = botProcess;
+    if (previous) {
+      // Wait for the close event (set in startBot) so we don't race the spawn.
+      previous.once("close", () => {
+        startBot();
+      });
+      stopBot();
+    } else {
+      startBot();
+    }
     return jsonResponse(res, 200, { restarted: true, message: "Bot を再起動します。", status: getBotStatus() });
   }
 
@@ -504,6 +621,14 @@ function serveStatic(req, res, pathname) {
   if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
     return textResponse(res, 404, "Not found");
   }
+
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") {
+    // Inject the per-session token so the page can authenticate API calls.
+    const text = fs.readFileSync(filePath, "utf8").replace(/__GUI_TOKEN__/g, GUI_TOKEN);
+    return textResponse(res, 200, text, contentTypeFor(filePath));
+  }
+
   const body = fs.readFileSync(filePath);
   res.writeHead(200, {
     "Content-Type": contentTypeFor(filePath),
@@ -517,8 +642,14 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, BASE_URL);
     if (url.pathname.startsWith("/api/")) {
+      if (!isAllowedApiRequest(req)) {
+        return jsonResponse(res, 403, { error: "Forbidden." });
+      }
       await handleApi(req, res, url.pathname);
       return;
+    }
+    if (!isAllowedRequestOrigin(req)) {
+      return textResponse(res, 403, "Forbidden");
     }
     serveStatic(req, res, url.pathname);
   } catch (error) {

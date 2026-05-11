@@ -5,12 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   Client,
+  Events,
   GatewayIntentBits,
   AttachmentBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
   MessageFlags,
   Partials,
 } from 'discord.js';
@@ -91,6 +88,18 @@ function resolveWebSearchMode(value) {
 
 const WEB_SEARCH_MODE_VALUE = resolveWebSearchMode(WEB_SEARCH_MODE);
 
+const BOT_TIMEZONE = (() => {
+  const raw = String(process.env.BOT_TIMEZONE || '').trim();
+  if (!raw) return 'Asia/Tokyo';
+  try {
+    new Intl.DateTimeFormat('sv-SE', { timeZone: raw });
+    return raw;
+  } catch {
+    console.warn(`[config] invalid BOT_TIMEZONE=${JSON.stringify(raw)}, falling back to Asia/Tokyo`);
+    return 'Asia/Tokyo';
+  }
+})();
+
 function normalizeOllamaKeepAliveForApi(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -101,7 +110,7 @@ function normalizeOllamaKeepAliveForApi(value) {
 function getCurrentDateContextText() {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo',
+    timeZone: BOT_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -112,7 +121,7 @@ function getCurrentDateContextText() {
   });
   const formatted = formatter.format(now).replace(' ', 'T');
   return [
-    `Current date/time: ${formatted} Asia/Tokyo.`,
+    `Current date/time: ${formatted} ${BOT_TIMEZONE}.`,
     'Use this as the current date unless the user explicitly asks about a different date.',
     'Do not assume the current year is 2024 by default.',
   ].join(' ');
@@ -473,8 +482,16 @@ async function ollamaWebFetch(url) {
 function normalizeDirectUrl(url) {
   let normalized = String(url || "").trim();
   if (!normalized) return "";
-  normalized = normalized.replace(/^<|>$/g, "");
-  normalized = normalized.replace(/[),.!?;:]+$/g, "");
+  normalized = normalized.replace(/^<+/, "").replace(/>+$/, "");
+  normalized = normalized.replace(/[.,!?;:]+$/, "");
+  // Only strip trailing ')' when the parentheses are unbalanced (i.e. it's
+  // really sentence punctuation). URLs like Wikipedia ja/Foo_(bar) keep them.
+  while (normalized.endsWith(")")) {
+    const opens = (normalized.match(/\(/g) || []).length;
+    const closes = (normalized.match(/\)/g) || []).length;
+    if (closes <= opens) break;
+    normalized = normalized.slice(0, -1);
+  }
   try {
     const parsed = new URL(normalized);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
@@ -777,7 +794,10 @@ const SD_TRANSLATE_ENABLED = String(SD_PROMPT_TRANSLATE || "false").toLowerCase(
 const SD_TRANSLATE_MODEL = SD_PROMPT_TRANSLATE_MODEL || LLM_MODEL_NAME;
 
 function numEnv(v, def) {
-  const n = Number(v);
+  if (v == null) return def;
+  const raw = String(v).trim();
+  if (!raw) return def;
+  const n = Number(raw);
   return Number.isFinite(n) ? n : def;
 }
 
@@ -853,6 +873,8 @@ async function sdTxt2Img({ prompt, negativePrompt, width, height, steps, cfgScal
 // ======================
 // ★ music (ACE-Step)
 // ======================
+const DISCORD_MAX_ATTACHMENT_BYTES = 24 * 1024 * 1024;
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -898,7 +920,7 @@ async function aceReleaseTask({ prompt, durationSec, audioFormat, lyrics, bpm, l
   const json = await res.json();
   const taskId = json?.data?.task_id;
   if (!taskId) {
-    throw new Error(`ACE-Step error: task_id missing. response=${JSON.stringify(json)}`);
+    throw new Error(`ACE-Step error: task_id missing. response=${truncateText(JSON.stringify(json), 500)}`);
   }
   return {
     taskId,
@@ -921,7 +943,7 @@ async function aceQueryResult(taskId) {
   const json = await res.json();
   const row = Array.isArray(json?.data) ? json.data[0] : null;
   if (!row) {
-    throw new Error(`ACE-Step poll error: invalid response ${JSON.stringify(json)}`);
+    throw new Error(`ACE-Step poll error: invalid response ${truncateText(JSON.stringify(json), 500)}`);
   }
 
   return {
@@ -955,15 +977,20 @@ async function aceFetchAudio(pathOrUrl) {
 // ★ music (ComfyUI)
 // ======================
 let comfyWorkflowTemplate = null;
+let comfyWorkflowMtimeMs = 0;
 
 function loadComfyWorkflowTemplate() {
-  if (comfyWorkflowTemplate) return comfyWorkflowTemplate;
   if (!fs.existsSync(COMFY_WORKFLOW_FILE)) {
     throw new Error(`ComfyUI workflow not found: ${COMFY_WORKFLOW_FILE}`);
   }
+  const stat = fs.statSync(COMFY_WORKFLOW_FILE);
+  const mtime = Number(stat.mtimeMs || 0);
+  if (comfyWorkflowTemplate && mtime === comfyWorkflowMtimeMs) {
+    return comfyWorkflowTemplate;
+  }
   const raw = fs.readFileSync(COMFY_WORKFLOW_FILE, 'utf-8');
-  const json = JSON.parse(raw);
-  comfyWorkflowTemplate = json;
+  comfyWorkflowTemplate = JSON.parse(raw);
+  comfyWorkflowMtimeMs = mtime;
   return comfyWorkflowTemplate;
 }
 
@@ -1104,7 +1131,7 @@ async function comfySubmitPrompt(workflow) {
   const json = await res.json();
   const promptId = json?.prompt_id;
   if (!promptId) {
-    throw new Error(`ComfyUI error: prompt_id missing. response=${JSON.stringify(json)}`);
+    throw new Error(`ComfyUI error: prompt_id missing. response=${truncateText(JSON.stringify(json), 500)}`);
   }
   return promptId;
 }
@@ -1177,6 +1204,12 @@ async function handleMusicJobComfy(job) {
     if (!audio) continue;
 
     const { buf, filename } = await comfyFetchAudio(audio);
+    if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
+      await interaction.editReply(
+        `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`
+      );
+      return;
+    }
     const ext = (filename.split(".").pop() || "mp3").toLowerCase();
     const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : "mp3";
     const outName = `music_${Date.now()}.${safeExt}`;
@@ -1246,6 +1279,12 @@ async function handleMusicJobAce(job) {
     }
 
     const { buf, contentType } = await aceFetchAudio(filePath);
+    if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
+      await interaction.editReply(
+        `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`
+      );
+      return;
+    }
     const ext = (filePath.split(".").pop() || "mp3").toLowerCase();
     const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : "mp3";
     const filename = `music_${Date.now()}.${safeExt}`;
@@ -1391,20 +1430,31 @@ function cloneBoard(board) {
   return board.map(row => row.slice());
 }
 
+const OTHELLO_POSITION_WEIGHT = [
+  [120, -20,  20,   5,   5,  20, -20, 120],
+  [-20, -40,  -5,  -5,  -5,  -5, -40, -20],
+  [ 20,  -5,  15,   3,   3,  15,  -5,  20],
+  [  5,  -5,   3,   3,   3,   3,  -5,   5],
+  [  5,  -5,   3,   3,   3,   3,  -5,   5],
+  [ 20,  -5,  15,   3,   3,  15,  -5,  20],
+  [-20, -40,  -5,  -5,  -5,  -5, -40, -20],
+  [120, -20,  20,   5,   5,  20, -20, 120],
+];
+
+// Positive = good for the player (black). Higher absolute weights = stronger play.
 function evaluateBoard(board) {
   const { black, white } = countPieces(board);
   const diff = black - white;
-  const corners = [
-    board[0][0], board[0][OTHELLO_SIZE - 1],
-    board[OTHELLO_SIZE - 1][0], board[OTHELLO_SIZE - 1][OTHELLO_SIZE - 1],
-  ];
-  let cornerScore = 0;
-  for (const v of corners) {
-    if (v === OTHELLO_PLAYER) cornerScore += 25;
-    else if (v === OTHELLO_AI) cornerScore -= 25;
+  let positional = 0;
+  for (let r = 0; r < OTHELLO_SIZE; r++) {
+    for (let c = 0; c < OTHELLO_SIZE; c++) {
+      const v = board[r][c];
+      if (v === OTHELLO_PLAYER) positional += OTHELLO_POSITION_WEIGHT[r][c];
+      else if (v === OTHELLO_AI) positional -= OTHELLO_POSITION_WEIGHT[r][c];
+    }
   }
   const mobility = getLegalMoves(board, OTHELLO_PLAYER).length - getLegalMoves(board, OTHELLO_AI).length;
-  return diff + cornerScore + mobility;
+  return diff + positional + mobility * 2;
 }
 
 function chooseAiMove(board, moves, difficulty) {
@@ -1435,7 +1485,7 @@ function chooseAiMove(board, moves, difficulty) {
     return best;
   }
 
-  const maxDepth = 3;
+  const maxDepth = 5;
   function minimax(boardState, color, depth, alpha, beta) {
     const legal = getLegalMoves(boardState, color);
     if (depth === 0 || isBoardFull(boardState) || (legal.length === 0 && getLegalMoves(boardState, otherColor(color)).length === 0)) {
@@ -1801,6 +1851,9 @@ function runAiIfNeeded(game) {
     }
     break;
   }
+  if (loopGuard >= 10) {
+    console.warn(`[othello] runAiIfNeeded loopGuard tripped: game=${game.id} current=${game.current}`);
+  }
   if (note) game.note = note;
 }
 
@@ -1867,44 +1920,38 @@ async function startOthelloGame(interaction, difficulty) {
 // ======================
 // ★ 画像対応ヘルパー
 // ======================
-function pickImageFromInteraction(interaction) {
-  const att = interaction.options.getAttachment("image");
+const SUPPORTED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const SUPPORTED_IMAGE_EXT_RE = /\.(png|jpe?g|webp)(?:$|\?)/i;
+
+function readImageAttachment(att) {
   if (!att) return null;
-
-  const url = att.url || "";
-  const ct = att.contentType || "";
-
-  const looksImageByType = typeof ct === "string" && ct.startsWith("image/");
-  const looksImageByExt = /\.(png|jpe?g|webp|gif)$/i.test(url);
+  const url = att.url || '';
+  const rawCt = String(att.contentType || '').toLowerCase().split(';')[0].trim();
+  const looksImageByType = SUPPORTED_IMAGE_MIMES.has(rawCt);
+  const looksImageByExt = SUPPORTED_IMAGE_EXT_RE.test(url);
   if (!looksImageByType && !looksImageByExt) return null;
-
   return {
     url,
-    contentType: looksImageByType ? ct : null,
-    size: typeof att.size === "number" ? att.size : null,
+    contentType: looksImageByType ? rawCt : null,
+    size: typeof att.size === 'number' ? att.size : null,
     name: att.name || null,
   };
 }
 
+function pickImageFromInteraction(interaction) {
+  return readImageAttachment(interaction.options.getAttachment('image'));
+}
+
 function pickFirstImageAttachment(msg) {
-  const att = msg.attachments?.first?.();
-  if (!att) return null;
-
-  const url = att.url || '';
-  const ct = att.contentType || '';
-
-  // DiscordのcontentTypeが入ることもあるが、入らないこともあるので拡張子でも判定
-  const looksImageByType = typeof ct === 'string' && ct.startsWith('image/');
-  const looksImageByExt = /\.(png|jpe?g|webp|gif)$/i.test(url);
-
-  if (!looksImageByType && !looksImageByExt) return null;
-
-  return {
-    url,
-    contentType: looksImageByType ? ct : null,
-    size: typeof att.size === 'number' ? att.size : null,
-    name: att.name || null,
-  };
+  const attachments = msg.attachments;
+  if (!attachments) return null;
+  // Iterate so we find the first image-like attachment even if non-images
+  // (e.g. a .txt file) were attached before it.
+  for (const att of attachments.values()) {
+    const result = readImageAttachment(att);
+    if (result) return result;
+  }
+  return null;
 }
 
 function guessMimeFromUrl(url) {
@@ -1918,14 +1965,13 @@ function guessMimeFromUrl(url) {
   if (/\.png$/i.test(target)) return 'image/png';
   if (/\.jpe?g$/i.test(target)) return 'image/jpeg';
   if (/\.webp$/i.test(target)) return 'image/webp';
-  if (/\.gif$/i.test(target)) return 'image/gif';
   return 'image/png';
 }
 
 function normalizeMimeForLlm(mime, url) {
   const raw = String(mime || '').toLowerCase().split(';')[0].trim();
   const guessed = guessMimeFromUrl(url);
-  const candidate = raw.startsWith('image/') ? raw : guessed;
+  const candidate = SUPPORTED_IMAGE_MIMES.has(raw) ? raw : guessed;
 
   if (LLM_PROVIDER_MODE === 'lmstudio') {
     if (candidate === 'image/png' || candidate === 'image/jpeg') return candidate;
@@ -2039,6 +2085,12 @@ async function processQueue(channelId) {
 
       const stopTyping = startTypingLoop(api.typing);
 
+      // Hoisted so the catch block can reference them after a throw.
+      let messagesToSend = st.history;
+      let replyResult = null;
+      let sourceUrls = [];
+      let userMessagePushed = false;
+
       try {
         // 履歴には「画像あり」の印だけ残す（base64を残すと履歴が爆増するため）
         const userChunkForHistory = imageAtt
@@ -2046,18 +2098,21 @@ async function processQueue(channelId) {
           : `${name}: ${text}`;
 
         st.history.push({ role: "user", content: userChunkForHistory });
+        userMessagePushed = true;
         trimHistory(st.history, LLM_MAX_HISTORY_MESSAGES_VALUE);
 
         if (!useWebSearch && WEB_SEARCH_MODE_VALUE === 'auto' && !imageAtt) {
-          const route = await decideAutoWebSearch(st.history, name, text);
-          useWebSearch = route.needsWebSearch;
-          if (route.searchQuery) webSearchQuery = route.searchQuery;
+          if (directUrls.length) {
+            // Direct URL fetch already covers the "needs fresh data" case; skip the LLM router.
+            useWebSearch = true;
+          } else {
+            const route = await decideAutoWebSearch(st.history, name, text);
+            useWebSearch = route.needsWebSearch;
+            if (route.searchQuery) webSearchQuery = route.searchQuery;
+          }
         }
 
         // 送信は、画像があるときだけ「このターンだけ」vision形式で投げる
-        let replyResult = null;
-        let sourceUrls = [];
-        let messagesToSend = st.history;
         if (imageAtt) {
           const image = await fetchImageForLlm(imageAtt.url, imageAtt.contentType);
 
@@ -2095,6 +2150,12 @@ async function processQueue(channelId) {
 
         const normalizedReplyText = stripInvisibleCharacters(replyResult?.text || '').trim();
         if (!normalizedReplyText) {
+          // Roll back the user message we just pushed so the LLM doesn't see a
+          // hanging user turn next time.
+          if (userMessagePushed && st.history[st.history.length - 1]?.role === "user") {
+            st.history.pop();
+            userMessagePushed = false;
+          }
           logEmptyLlmResponse({ item, useWebSearch, imageAtt, result: replyResult });
           await api.replyFirst("⚠️ モデルが空の応答を返しました。");
           continue;
@@ -2111,6 +2172,10 @@ async function processQueue(channelId) {
           await api.sendMore(parts[i]);
         }
       } catch (e) {
+        // Drop the orphan user message on failure so retries don't accumulate it.
+        if (userMessagePushed && st.history[st.history.length - 1]?.role === "user") {
+          st.history.pop();
+        }
         logLlmTimeout({ error: e, messages: messagesToSend, item, useWebSearch, imageAtt });
         console.error(e);
         await api.onError(e?.message || String(e));
@@ -2134,7 +2199,7 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-client.once('clientReady', () => {
+client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   console.log(`✅ Allowed channels: ${[...allowedChannelIds].join(', ')}`);
   console.log(`✅ LLM provider: ${LLM_PROVIDER_MODE}`);
@@ -2150,7 +2215,7 @@ client.once('clientReady', () => {
   }
 });
 
-client.on('messageCreate', async (msg) => {
+client.on(Events.MessageCreate, (msg) => {
   if (msg.author.bot) return;
   if (!allowedChannelIds.has(msg.channelId)) return;
 
@@ -2159,19 +2224,17 @@ client.on('messageCreate', async (msg) => {
   const name = msg.member?.displayName || msg.author.username;
   st.queue.push({ kind: "message", msg, name, text: msg.content });
 
-  try {
-    await processQueue(msg.channelId);
-  } catch (e) {
+  processQueue(msg.channelId).catch(e => {
     console.error(e);
-    try { await msg.reply(`エラー: ${e.message}`); } catch {}
-  }
+    msg.reply(`エラー: ${e.message}`).catch(() => {});
+  });
 });
 
 // ================================
 // スラッシュコマンド用
 // ================================
 
-client.on("interactionCreate", async (interaction) => {
+client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) return;
 
@@ -2347,13 +2410,14 @@ client.on("interactionCreate", async (interaction) => {
       const batchOpt = interaction.options.getInteger("batch");
       const negativeOpt = interaction.options.getString("negative");
 
-      const finalWidth = Number.isFinite(width) ? width : numEnv(SD_WIDTH, 768);
-      const finalHeight = Number.isFinite(height) ? height : numEnv(SD_HEIGHT, 768);
-      const finalSteps = Number.isFinite(steps) ? steps : numEnv(SD_STEPS, 20);
-      const finalCfgScale = Number.isFinite(cfgScale) ? cfgScale : numEnv(SD_CFG_SCALE, 7);
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const finalWidth = clamp(Number.isFinite(width) ? width : numEnv(SD_WIDTH, 768), 64, 2048);
+      const finalHeight = clamp(Number.isFinite(height) ? height : numEnv(SD_HEIGHT, 768), 64, 2048);
+      const finalSteps = clamp(Number.isFinite(steps) ? steps : numEnv(SD_STEPS, 20), 1, 150);
+      const finalCfgScale = clamp(Number.isFinite(cfgScale) ? cfgScale : numEnv(SD_CFG_SCALE, 7), 1, 30);
       const finalSampler = String(samplerOpt ?? SD_SAMPLER ?? "DPM++ 2M Karras");
       const finalSeed = Number.isFinite(seedOpt) ? seedOpt : -1;
-      const finalBatch = Number.isFinite(batchOpt) ? batchOpt : numEnv(SD_BATCH_SIZE, 1);
+      const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : numEnv(SD_BATCH_SIZE, 1), 1, 4);
       const finalNegative = String(negativeOpt ?? SD_NEGATIVE_PROMPT ?? "");
 
       await interaction.deferReply();
@@ -2433,7 +2497,7 @@ client.on("interactionCreate", async (interaction) => {
         } catch {}
       }
 
-      await processMusicQueue();
+      processMusicQueue().catch(e => console.error("music queue error:", e));
       return;
     }
 
@@ -2473,13 +2537,11 @@ client.on("interactionCreate", async (interaction) => {
         imageAtt, // 画像は interaction から拾ったものを渡す（message添付とは別ルート）
       });
 
-      // ★キュー処理（チャンネル単位で完全直列化）
-      try {
-        await processQueue(interaction.channelId);
-      } catch (e) {
+      // ★キュー処理（チャンネル単位で完全直列化）。長い応答中でも handler を抜ける。
+      processQueue(interaction.channelId).catch(e => {
         console.error(e);
-        try { await interaction.editReply(`⚠️ エラー: ${e.message}`); } catch { }
-      }
+        interaction.editReply(`⚠️ エラー: ${e.message}`).catch(() => {});
+      });
 
       return;
     }
@@ -2514,12 +2576,10 @@ client.on("interactionCreate", async (interaction) => {
         webSearch: true,
       });
 
-      try {
-        await processQueue(interaction.channelId);
-      } catch (e) {
+      processQueue(interaction.channelId).catch(e => {
         console.error(e);
-        try { await interaction.editReply(`⚠️ エラー: ${e.message}`); } catch {}
-      }
+        interaction.editReply(`⚠️ エラー: ${e.message}`).catch(() => {});
+      });
 
       return;
     }
@@ -2561,7 +2621,7 @@ const REACTION_DIGITS = new Map([
   ["5️⃣", 5], ["6️⃣", 6], ["7️⃣", 7], ["8️⃣", 8], ["9️⃣", 9],
 ]);
 
-client.on("messageReactionAdd", async (reaction, user) => {
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
   try {
     if (user.bot) return;
     if (reaction.partial) await reaction.fetch();

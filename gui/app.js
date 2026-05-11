@@ -40,10 +40,13 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove("visible"), 3500);
 }
 
+const GUI_TOKEN = document.querySelector('meta[name="gui-token"]')?.getAttribute("content") || "";
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
+      "X-GUI-Token": GUI_TOKEN,
       ...(options.headers || {}),
     },
     ...options,

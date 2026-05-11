@@ -3,6 +3,18 @@
   "version": "1.0.0",
   "description": "Discord bot for chatting with a local LLM and generating media via local backends.",
   "main": "index.mjs",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Haritan4141/discord-local-llm-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Haritan4141/discord-local-llm-bot/issues"
+  },
+  "homepage": "https://github.com/Haritan4141/discord-local-llm-bot#readme",
   "scripts": {
     "gui": "node gui-server.mjs",
     "start": "node index.mjs",
@@ -14,7 +26,15 @@
     "check": "node --check index.mjs && node --check gui-server.mjs && node --check register-commands.mjs && node --check clear-guild-commands.mjs && node --check clear-global-commands.mjs",
     "test": "npm run check"
   },
-  "keywords": [],
+  "keywords": [
+    "discord",
+    "discord-bot",
+    "llm",
+    "ollama",
+    "lmstudio",
+    "stable-diffusion",
+    "comfyui"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {

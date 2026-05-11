@@ -12,17 +12,17 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("chat")
-    .setDescription("LLMに話しかけます。")
+    .setDescription("LLMに話しかけます。message か image のどちらかを指定してください。")
     .addStringOption(option =>
       option
         .setName("message")
-        .setDescription("送るメッセージ")
+        .setDescription("送るメッセージ (image だけでも可)")
         .setRequired(false)
     )
     .addAttachmentOption(option =>
       option
         .setName("image")
-        .setDescription("一緒に送る画像（任意）")
+        .setDescription("一緒に送る画像 (png/jpeg/webp。message を省略すると画像のみで質問)")
         .setRequired(false)
     ),
 
