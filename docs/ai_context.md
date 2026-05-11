@@ -272,3 +272,7 @@ Git 操作の運用ルール:
   - 現在日時情報 (Asia/Tokyo) を system message として毎回注入するようにした
   - `WEB_SEARCH_MODE` を追加し、`manual` / `auto` を GUI から切り替えられるようにした
   - `auto` では通常チャットでも router が検索要否と検索クエリを判定し、必要時のみ Ollama Web Search を使うようにした
+
+- 2026-05-11
+  - 検索経路でメッセージ内の URL を抽出し、まず直接 `web_fetch` するようにした
+  - URL 付きメッセージでは、直接取得できたページ内容を優先し、必要な場合のみ追加で Web Search を併用するようにした

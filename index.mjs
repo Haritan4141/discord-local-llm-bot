@@ -413,6 +413,7 @@ const WEB_SEARCH_MAX_RESULTS = 5;
 const WEB_FETCH_TOP_RESULTS = 3;
 const WEB_SEARCH_SNIPPET_MAX_CHARS = 500;
 const WEB_FETCH_CONTENT_MAX_CHARS = 2500;
+const WEB_DIRECT_FETCH_MAX_URLS = 3;
 const AUTO_WEB_ROUTER_HISTORY_MESSAGES = 6;
 
 function ollamaWebHeaders() {
@@ -469,25 +470,129 @@ async function ollamaWebFetch(url) {
   };
 }
 
-async function buildWebSearchContext(query) {
-  const results = await ollamaWebSearch(query, WEB_SEARCH_MAX_RESULTS);
-  if (!results.length) {
-    throw new Error("Web search の結果が見つかりませんでした。検索語を変えて試してください。");
+function normalizeDirectUrl(url) {
+  let normalized = String(url || "").trim();
+  if (!normalized) return "";
+  normalized = normalized.replace(/^<|>$/g, "");
+  normalized = normalized.replace(/[),.!?;:]+$/g, "");
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function extractDirectUrls(text) {
+  const raw = String(text || "");
+  const matches = raw.match(/https?:\/\/[^\s<>"'`]+/gi) || [];
+  const unique = new Set();
+  for (const match of matches) {
+    const normalized = normalizeDirectUrl(match);
+    if (normalized) unique.add(normalized);
+  }
+  return [...unique];
+}
+
+function stripUrlsFromText(text) {
+  return String(text || "").replace(/https?:\/\/[^\s<>"'`]+/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function isUsefulSearchQuery(query) {
+  const normalized = stripUrlsFromText(query);
+  if (!normalized) return false;
+  const compact = normalized.replace(/\s+/g, "").toLowerCase();
+  if (compact.length < 4) return false;
+  const genericOnlyPatterns = [
+    /^このu?r?l(の内容)?$/,
+    /^このページ(の内容)?$/,
+    /^このサイト(の内容)?$/,
+    /^このリンク(の内容)?$/,
+    /^この記事(の内容)?$/,
+    /^これ(の内容)?$/,
+    /^内容$/,
+    /^要約$/,
+    /^見て$/,
+    /^教えて$/,
+    /^どう$/,
+    /^どうですか$/,
+  ];
+  return !genericOnlyPatterns.some(pattern => pattern.test(compact));
+}
+
+function buildWebContextText(entries) {
+  return entries.map((entry, index) => {
+    const lines = [
+      `[Source ${index + 1}]`,
+      `Title: ${entry.title}`,
+      `URL: ${entry.url}`,
+    ];
+    if (entry.sourceType === "direct") lines.push("Source type: Direct URL fetch");
+    if (entry.searchSnippet) lines.push(`Search snippet: ${entry.searchSnippet}`);
+    if (entry.pageContent) lines.push(`Fetched page content: ${entry.pageContent}`);
+    if (entry.links.length) lines.push(`Page links: ${entry.links.join(", ")}`);
+    return lines.join("\n");
+  }).join("\n\n");
+}
+
+async function buildWebSearchContext(input) {
+  const directUrls = Array.isArray(input?.directUrls)
+    ? [...new Set(input.directUrls.map(normalizeDirectUrl).filter(Boolean))].slice(0, WEB_DIRECT_FETCH_MAX_URLS)
+    : [];
+  const query = typeof input === "string"
+    ? String(input || "").trim()
+    : String(input?.query || "").trim();
+
+  const entries = [];
+
+  if (directUrls.length) {
+    const directFetches = await Promise.allSettled(directUrls.map(url => ollamaWebFetch(url)));
+    for (let index = 0; index < directUrls.length; index += 1) {
+      const url = directUrls[index];
+      const fetched = directFetches[index];
+      if (fetched?.status !== "fulfilled") continue;
+      entries.push({
+        title: fetched.value.title || `Direct URL ${index + 1}`,
+        url,
+        searchSnippet: "",
+        pageContent: truncateText(fetched.value.content, WEB_FETCH_CONTENT_MAX_CHARS),
+        links: Array.isArray(fetched.value.links) ? fetched.value.links.slice(0, 5) : [],
+        sourceType: "direct",
+      });
+    }
   }
 
-  const selected = results.slice(0, WEB_FETCH_TOP_RESULTS);
-  const fetches = await Promise.allSettled(selected.map(result => ollamaWebFetch(result.url)));
+  const shouldSearch = isUsefulSearchQuery(query);
+  if (shouldSearch) {
+    const results = await ollamaWebSearch(query, WEB_SEARCH_MAX_RESULTS);
+    if (results.length) {
+      const remainingSlots = Math.max(0, WEB_FETCH_TOP_RESULTS - entries.length);
+      const dedupedResults = results.filter(result => !directUrls.includes(result.url));
+      const selected = remainingSlots > 0 ? dedupedResults.slice(0, remainingSlots) : [];
+      const fetches = await Promise.allSettled(selected.map(result => ollamaWebFetch(result.url)));
 
-  const entries = selected.map((result, index) => {
-    const fetched = fetches[index]?.status === "fulfilled" ? fetches[index].value : null;
-    return {
-      title: fetched?.title || result.title || `Result ${index + 1}`,
-      url: result.url,
-      searchSnippet: truncateText(result.content, WEB_SEARCH_SNIPPET_MAX_CHARS),
-      pageContent: truncateText(fetched?.content, WEB_FETCH_CONTENT_MAX_CHARS),
-      links: Array.isArray(fetched?.links) ? fetched.links.slice(0, 5) : [],
-    };
-  });
+      for (let index = 0; index < selected.length; index += 1) {
+        const result = selected[index];
+        const fetched = fetches[index]?.status === "fulfilled" ? fetches[index].value : null;
+        entries.push({
+          title: fetched?.title || result.title || `Result ${index + 1}`,
+          url: result.url,
+          searchSnippet: truncateText(result.content, WEB_SEARCH_SNIPPET_MAX_CHARS),
+          pageContent: truncateText(fetched?.content, WEB_FETCH_CONTENT_MAX_CHARS),
+          links: Array.isArray(fetched?.links) ? fetched.links.slice(0, 5) : [],
+          sourceType: "search",
+        });
+      }
+    }
+  }
+
+  if (!entries.length) {
+    if (directUrls.length) {
+      throw new Error("指定された URL を取得できませんでした。URL が公開されているか確認してください。");
+    }
+    throw new Error("Web search の結果が見つかりませんでした。検索語を変えて試してください。");
+  }
 
   const sourceMap = new Map();
   for (const entry of entries) {
@@ -497,21 +602,9 @@ async function buildWebSearchContext(query) {
   }
   const sources = [...sourceMap.values()];
 
-  const contextParts = entries.map((entry, index) => {
-    const lines = [
-      `[Source ${index + 1}]`,
-      `Title: ${entry.title}`,
-      `URL: ${entry.url}`,
-    ];
-    if (entry.searchSnippet) lines.push(`Search snippet: ${entry.searchSnippet}`);
-    if (entry.pageContent) lines.push(`Fetched page content: ${entry.pageContent}`);
-    if (entry.links.length) lines.push(`Page links: ${entry.links.join(", ")}`);
-    return lines.join("\n");
-  });
-
   return {
     sources,
-    contextText: contextParts.join("\n\n"),
+    contextText: buildWebContextText(entries),
   };
 }
 
@@ -553,7 +646,9 @@ function buildAutoWebRouterMessages(history, name, text) {
         "Decide whether the latest user message requires up-to-date web search before answering.",
         "Return JSON only with keys: needs_web_search (boolean), search_query (string), reason (string).",
         "Set needs_web_search=true when the answer depends on current facts, current dates, release status, prices, availability, current versions, recent news, or when the latest message is a follow-up to such a topic.",
+        "If the latest message contains a concrete URL and asks about that page, treat it as requiring web access.",
         "Use recent conversation context to resolve follow-up questions like 'それいくら？' or '本当に出た？'.",
+        "If direct URL fetch alone is enough, you may set search_query to an empty string.",
         "If needs_web_search=false, set search_query to an empty string.",
         "No markdown. No prose outside the JSON.",
       ].join(" "),
@@ -1929,8 +2024,9 @@ async function processQueue(channelId) {
 
       const name = item.name;
       const text = item.text || "";
+      const directUrls = extractDirectUrls(text);
       let useWebSearch = !!item.webSearch;
-      let webSearchQuery = text;
+      let webSearchQuery = directUrls.length ? stripUrlsFromText(text) : text;
       const normalChatOptions = LLM_PROVIDER_MODE === 'ollama'
         ? { reasoningEffort: 'none' }
         : {};
@@ -1983,7 +2079,10 @@ async function processQueue(channelId) {
 
           replyResult = await localLlmChat(messagesToSend, normalChatOptions);
         } else if (useWebSearch) {
-          const webContext = await buildWebSearchContext(webSearchQuery);
+          const webContext = await buildWebSearchContext({
+            query: webSearchQuery,
+            directUrls,
+          });
           sourceUrls = webContext.sources;
           messagesToSend = buildWebChatMessages(st.history, name, text, webContext);
           replyResult = await localLlmChat(messagesToSend, {

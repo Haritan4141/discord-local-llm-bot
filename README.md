@@ -8,6 +8,7 @@ Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) 
 - 会話履歴の簡易保持 (最大 30 メッセージ)
 - 画像添付を Vision 形式で LLM に送信
 - `/webchat` で Ollama Web Search を使った検索付き会話
+- `/webchat` や `WEB_SEARCH_MODE=auto` の検索経路では、メッセージ内の URL を優先して直接取得
 - LLM Provider として Ollama / LM Studio / Custom OpenAI 互換 API を選択
 - `/persona` によるチャンネル別の人格上書き
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) 画像生成
@@ -62,6 +63,7 @@ start-gui.bat
 
 `LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
 `WEB_SEARCH_MODE=auto` にすると、通常チャットでも LLM がそのターンで検索が必要かを判定し、必要なときだけ Ollama Web Search を使います。`manual` の場合は従来どおり `/webchat` のときだけ検索します。
+検索経路では、メッセージ本文に `https://...` 形式の URL が含まれている場合、その URL をまず直接取得します。必要な場合だけ追加で Web Search を併用します。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)

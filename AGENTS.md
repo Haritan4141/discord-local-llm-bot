@@ -11,6 +11,7 @@
 - 通常チャットの temperature は `LLM_TEMPERATURE` で設定。既定値は `0.4`
 - 会話履歴件数は `LLM_MAX_HISTORY_MESSAGES` で設定。既定値は `30`
 - Web 検索モードは `WEB_SEARCH_MODE` で設定。`manual` は `/webchat` のみ、`auto` は通常チャットでも毎ターン検索要否を判定
+- 検索経路では、メッセージ中の URL を優先して直接 `web_fetch` する
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
