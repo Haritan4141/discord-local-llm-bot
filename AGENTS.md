@@ -20,6 +20,7 @@
 - `/music` で ComfyUI または ACE-Step を使った音楽生成を呼び出し
 - `/othello` でリアクション操作のオセロ (VS AI) を開始
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
+- 必要に応じて、同じ Bot の Standby モードで「メイン Bot 停止中」の固定返信を返せる
 
 ## 主要ファイル
 - `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
@@ -40,6 +41,7 @@
 - `src/discord/text-attachments.mjs` : テキスト添付の判定と本文取得
 - `src/discord/typing.mjs` : "入力中..." 定期送信
 - `src/discord/queue.mjs` : `processQueue` (画像 / 通常 / web 検索の分岐含む)
+- `src/standby/config.mjs` / `src/standby/bot.mjs` : 同じ Bot を使う Standby モードの設定と本体
 - `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
 - `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
 - `src/othello/board.mjs` / `ai.mjs` / `render.mjs` / `game.mjs` : 盤面・AI・PNG 描画・進行
@@ -54,6 +56,7 @@
 - `comfyui/workflows/` : `/music` 用 ComfyUI workflow
 - `start-gui.bat` : GUI 起動
 - `start-bot.bat` : Bot 起動
+- `start-standby-bot.bat` : Standby Bot 起動
 - `start-ollama.bat` : Ollama 起動
 
 ## 実行の前提
@@ -66,6 +69,7 @@
 - Optional: chat timezone (`BOT_TIMEZONE`, IANA name, default `Asia/Tokyo`)
 - Optional: Ollama model keep-alive (`OLLAMA_KEEP_ALIVE`, 例: `30m`, `1h`, `-1`)
 - Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
+- Optional: standby mode (`STANDBY_CHANNEL_IDS`, `STANDBY_REPLY_MESSAGE`, `STANDBY_REPLY_COOLDOWN_SECONDS`)
 - Optional: Stable Diffusion WebUI ( `--api` 起動 )
 - Optional: ComfyUI ( `--listen` 起動 ) または ACE-Step API
 
@@ -78,9 +82,11 @@
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
 - Discord で長文が `message.txt` 添付になった場合でも、通常メッセージなら最初のテキスト添付 1 件を自動で読む
 - `/systemprompt` はそのチャンネルの Bot 挙動を直接変える。スラッシュコマンドを使える人なら変更できる前提で扱う
+- Standby Bot はメイン Bot と同時起動しない前提。GUI では排他制御している
+- Standby Bot は同じ `DISCORD_TOKEN` を使う。`STANDBY_CHANNEL_IDS` が空なら `CHANNEL_IDS` を使う
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される
 - スラッシュコマンドを変更したら GUI の `Register Guild Commands` / `Register Global Commands` または `node register-commands.mjs --guild|--global` を実行する
 - UTF-8 でファイルを保存すること
 - 日本語の文字化けに注意 (特に `src/**/*.mjs`, `gui/`, `.env.example`, `README.md`)
 - GUI は起動毎にランダムな `X-GUI-Token` を発行し、`Host` / `Origin` ヘッダも検証する。改造する際は `gui/index.html` の `<meta name="gui-token">` と `gui/app.js` の `GUI_TOKEN` を維持すること
-- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 46 件) が走る。純関数を変更したら必要に応じてテストを追加する
+- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 52 件) が走る。純関数を変更したら必要に応じてテストを追加する

@@ -15,7 +15,8 @@
       </div>
       <div class="status-group">
         <span id="saveState" class="pill neutral">未保存なし</span>
-        <span id="botState" class="pill neutral">Bot 状態確認中</span>
+        <span id="botState" class="pill neutral">Main Bot 状態確認中</span>
+        <span id="standbyState" class="pill neutral">Standby 状態確認中</span>
       </div>
     </header>
 
@@ -24,7 +25,7 @@
         <div class="panel-head">
           <div>
             <h2>設定</h2>
-            <p id="envPath">.env を読み込み中です。</p>
+            <p id="envPath">.env を読み込み中です...</p>
           </div>
           <div class="actions">
             <button id="reloadBtn" type="button" class="secondary">Reload</button>
@@ -33,7 +34,8 @@
         </div>
 
         <div class="notice">
-          <strong>注意:</strong> 設定を変更した後は、必要に応じて Bot を再起動してください。
+          <strong>注意:</strong>
+          設定を変更した後は、必要に応じて Main Bot または Standby Bot を再起動してください。
         </div>
 
         <label class="toggle-line">
@@ -48,7 +50,7 @@
         <section class="panel">
           <div class="panel-head compact">
             <div>
-              <h2>Bot 操作</h2>
+              <h2>Main Bot</h2>
               <p id="pidText">PID: -</p>
             </div>
           </div>
@@ -59,16 +61,33 @@
             <button id="registerGuildCommandsBtn" type="button" class="secondary">Register Guild Commands</button>
             <button id="registerGlobalCommandsBtn" type="button" class="secondary">Register Global Commands</button>
           </div>
-          <p class="hint">Register Guild Commands は `.env` の `GUILD_ID` に指定した 1 個以上のサーバーへ登録します。反映は速めです。</p>
-          <p class="hint">Register Global Commands は全サーバー向けのグローバルコマンドを登録します。反映は遅めで、最大 1 時間程度かかることがあります。</p>
-          <p class="hint">Start Bot は `node index.mjs` を GUI の親プロセスとして起動します。ログは下の欄と `bot.log` に表示されます。</p>
+          <p class="hint">Register Guild Commands は `.env` の `GUILD_ID` に指定したサーバーへ登録します。反映は速めです。</p>
+          <p class="hint">Register Global Commands は全サーバー向け登録です。反映は遅めで、最大 1 時間ほどかかることがあります。</p>
+          <p class="hint">Start Bot は `node index.mjs` を GUI の子プロセスとして起動します。ログは `bot.log` にも追記されます。</p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head compact">
+            <div>
+              <h2>Standby Bot</h2>
+              <p id="standbyPidText">PID: -</p>
+            </div>
+          </div>
+          <div class="button-grid">
+            <button id="startStandbyBtn" type="button" class="primary">Start Standby Bot</button>
+            <button id="stopStandbyBtn" type="button" class="danger">Stop Standby Bot</button>
+            <button id="restartStandbyBtn" type="button" class="secondary">Restart Standby Bot</button>
+          </div>
+          <p class="hint">Standby Bot は、メイン Bot を停止している間だけ同じ Bot で固定返信する待機モードです。</p>
+          <p class="hint">Main Bot と Standby Bot は同時起動できません。切り替えて使ってください。</p>
+          <p class="hint">追加の Discord Bot や別トークンは不要です。`DISCORD_TOKEN` をそのまま使います。</p>
         </section>
 
         <section class="panel log-panel">
           <div class="panel-head compact">
             <div>
               <h2>ログ</h2>
-              <p>Bot / GUI / コマンド登録の出力</p>
+              <p>GUI / Main Bot / Standby Bot / コマンド登録の出力</p>
             </div>
             <button id="clearLogBtn" type="button" class="secondary">Clear</button>
           </div>
@@ -76,7 +95,7 @@
             <input id="autoScroll" type="checkbox" checked>
             <span>自動スクロール</span>
           </label>
-          <pre id="logBox" class="log-box">ログを読み込み中です。</pre>
+          <pre id="logBox" class="log-box">ログを読み込み中です...</pre>
         </section>
       </aside>
     </main>

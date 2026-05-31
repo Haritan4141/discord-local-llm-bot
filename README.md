@@ -62,6 +62,9 @@ start-gui.bat
 - `LLM_API_KEY` (通常は空。API key が必要な互換サーバー向け)
 - `OLLAMA_KEEP_ALIVE` (Ollama のモデル保持時間。例: `30m`=30分, `1h`=1時間, `3600`=3600秒, `-1`=常時ロード)
 - `OLLAMA_WEB_API_KEY` (`/webchat` 用。Ollama account の API key)
+- `STANDBY_CHANNEL_IDS` (Standby Bot の対象チャンネル。空欄なら `CHANNEL_IDS`)
+- `STANDBY_REPLY_MESSAGE` (Standby Bot の固定返信)
+- `STANDBY_REPLY_COOLDOWN_SECONDS` (同一ユーザー連投時のクールダウン秒数)
 
 `LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
 `WEB_SEARCH_MODE=auto` にすると、通常チャットでも LLM がそのターンで検索が必要かを判定し、必要なときだけ Ollama Web Search を使います。`manual` の場合は従来どおり `/webchat` のときだけ検索します。
@@ -175,8 +178,25 @@ npm start
 - LLM Provider に応じて `/v1/models` からモデル一覧を取得し、`LLM_MODEL` の候補として選択可能
 - `Save .env` で設定保存
 - `Start Bot` / `Stop Bot` / `Restart Bot` で Bot プロセスを操作
+- `Start Standby Bot` / `Stop Standby Bot` / `Restart Standby Bot` で同じ Bot の待機モードを操作
 - `Register Guild Commands` / `Register Global Commands` でスラッシュコマンド登録
 - ログ欄に GUI / Bot / コマンド登録の出力を表示し、同時に `bot.log` にも追記
+
+### Standby Bot
+
+メイン Bot を停止している間だけ固定メッセージを返したい場合は、同じ `DISCORD_TOKEN` を使う Standby モードを起動できます。
+
+- `STANDBY_CHANNEL_IDS` を空欄にすると `CHANNEL_IDS` をそのまま使う
+- `STANDBY_REPLY_MESSAGE` に停止中メッセージを設定
+- `STANDBY_REPLY_COOLDOWN_SECONDS` で同じユーザーへの連投返信を抑制
+- GUI では `Start Standby Bot` / `Stop Standby Bot` / `Restart Standby Bot`
+- CLI では `npm run standby` または `start-standby-bot.bat`
+
+注意:
+
+- Main Bot と Standby Bot は同時起動しません。GUI で排他制御しています。
+- Standby Bot は同じ `DISCORD_TOKEN` でログインします。追加の Discord Application / Bot Token は不要です。
+- 必要な権限は最低限 `View Channels`, `Send Messages`, `Read Message History` と `Message Content Intent` です。
 
 ## コマンド
 - `/help` : ヘルプ表示
@@ -211,7 +231,7 @@ npm start
 
 ## テスト
 - `npm run check` : 全 `.mjs` ファイルの構文チェック
-- `npm test` : `npm run check` + `node --test tests/` (現在 46 件、純関数を網羅)
+- `npm test` : `npm run check` + `node --test tests/` (現在 52 件、純関数を中心に検証)
 
 ## `/draw` 例
 ```text
