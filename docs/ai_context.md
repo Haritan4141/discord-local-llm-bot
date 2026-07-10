@@ -2,13 +2,13 @@
 
 ## プロジェクト概要
 
-このプロジェクトは、Discord 上でローカル LLM と会話できる Bot です。通常メッセージ、`/chat`、`/webchat` を処理し、画像添付、テキスト添付、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。
+このプロジェクトは、Discord 上でローカル LLM または OpenAI API と会話できる Bot です。通常メッセージ、`/chat`、`/webchat` を処理し、画像添付、テキスト添付、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。
 
 主な技術スタック:
 - Node.js 18+
 - `discord.js` v14
 - `dotenv`
-- Ollama / LM Studio / Custom OpenAI-compatible API
+- OpenAI Responses API / Ollama / LM Studio / Custom OpenAI-compatible API
 - Stable Diffusion WebUI (AUTOMATIC1111)
 - ComfyUI / ACE-Step
 
@@ -17,8 +17,8 @@
 - `src/bot.mjs`: Discord クライアント本体
 - `src/config.mjs`: `.env` 読込とランタイム設定
 - `src/discord/queue.mjs`: 通常チャット、画像、Web 検索の処理キュー
-- `src/llm/`: LLM 呼び出しと診断ログ
-- `src/web/`: Ollama Web Search / URL fetch / auto-search router
+- `src/llm/`: OpenAI Responses / Chat Completions 呼び出しと診断ログ
+- `src/web/`: OpenAI 公式 API 以外で使う Ollama Web Search / URL fetch / auto-search router
 - `src/standby/`: Main Bot 停止中に同じ Bot で固定返信する Standby モード
 - `gui-server.mjs`, `gui/`: ローカル GUI
 - `register-commands.mjs`: スラッシュコマンド登録
@@ -36,23 +36,23 @@
 
 ## 現在の作業目的
 
-現在の目的は、Main Bot を停止している間だけ、同じ `DISCORD_TOKEN` を使う Standby モードで固定返信できるようにすることです。
+現在の目的は、OpenAI API 接続時に Responses API と公式 `web_search` を利用し、Discord から検索付き回答を得られるようにすることです。
 
 達成したい状態:
-- 追加の Discord Bot / Application を作らずに Standby モードを使える
-- GUI から Main Bot と Standby モードを切り替えられる
-- Main Bot と Standby モードは同時起動しない
-- `.env.example`、README、AGENTS の説明が同じ仕様を向いている
+- OpenAI 接続は Responses API を使う
+- `/webchat` は公式検索必須、`WEB_SEARCH_MODE=auto` はモデル判断、`manual` の通常会話は検索なし
+- OpenAI 以外の既存 Chat Completions / Ollama Web Search 経路を維持する
+- GUI、`.env.example`、README の説明を同じ仕様に揃える
 
 変更範囲:
-- `src/standby/`
-- `standby-bot.mjs`
-- `start-standby-bot.bat`
+- `src/llm/`
+- `src/discord/queue.mjs`
+- `src/config.mjs`
 - `gui-server.mjs`
-- `gui/index.html`
+- `gui/app.js`
 - `.env.example`
 - `README.md`
-- `AGENTS.md`
+- `tests/`
 
 ## これまでに実施した作業
 
@@ -65,6 +65,14 @@
 - `/systemprompt` / `/systemprompt-show`
 - GUI の Host / Origin / `X-GUI-Token` 検証
 - `tests/` 配下のユニットテスト
+
+今回の OpenAI Responses 関連:
+- OpenAI Provider または `https://api.openai.com` を自動判定
+- 通常会話、履歴、Vision 入力を Responses API 形式へ変換
+- `/webchat` は `tool_choice=required`、`auto` は `tool_choice=auto`
+- 検索結果の引用元 URL を Discord 返信末尾に表示
+- OpenAI 利用時は `OLLAMA_WEB_API_KEY` 不要
+- Payload 生成、応答解析、検索モード判定のユニットテストを追加
 
 今回の Standby 関連:
 - 追加済み:
@@ -91,6 +99,7 @@
 ## 未完了タスク
 
 現時点の残作業:
+- ユーザー環境の OpenAI API キーで Discord 実機の通常会話、`/webchat`、`auto` 検索を確認
 - 実機で GUI から Standby モードの起動・停止・再起動を確認
 - 実機で Standby モードの固定返信とクールダウンを確認
 - 必要なら GUI の文言や README の説明をさらに調整
@@ -115,6 +124,8 @@
 - Main Bot / Standby モードの管理 API が存在する
 
 まだ未確認:
+- OpenAI API への実リクエスト（API キーと課金を不用意に使わないため未実施）
+- Discord 実機での OpenAI `/webchat` と引用 URL 表示
 - Discord 実機での Standby モード起動
 - 固定返信の内容
 - クールダウン挙動
@@ -171,6 +182,10 @@
 
 ## 更新履歴
 
+- 2026-07-10
+  - OpenAI Responses API と公式 `web_search` を追加
+  - `/webchat` の検索必須、`WEB_SEARCH_MODE=auto` の任意検索を Provider 別に実装
+  - GUI / `.env.example` / README / テストを更新
 - 2026-05-31
   - Standby モードを「別 Bot / 別 Token」前提から「同じ `DISCORD_TOKEN` を使う待機プロセス」前提に変更
   - `STANDBY_DISCORD_TOKEN` を廃止

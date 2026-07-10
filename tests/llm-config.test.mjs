@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   defaultLlmBaseUrl,
+  isOpenAiApiProvider,
   normalizeOpenAiBaseUrl,
   nativeOllamaBaseUrl,
   numEnv,
@@ -9,10 +10,20 @@ import {
 } from '../src/utils/llm-config.mjs';
 
 test('defaultLlmBaseUrl returns the official local endpoints', () => {
+  assert.equal(defaultLlmBaseUrl('openai'), 'https://api.openai.com/v1');
   assert.equal(defaultLlmBaseUrl('ollama'), 'http://127.0.0.1:11434/v1');
   assert.equal(defaultLlmBaseUrl('lmstudio'), 'http://127.0.0.1:1234/v1');
   assert.equal(defaultLlmBaseUrl('custom'), '');
   assert.equal(defaultLlmBaseUrl(undefined), '');
+});
+
+test('isOpenAiApiProvider recognizes the provider and official API host', () => {
+  assert.equal(isOpenAiApiProvider('openai', ''), true);
+  assert.equal(isOpenAiApiProvider('custom', 'https://api.openai.com/v1'), true);
+  assert.equal(isOpenAiApiProvider('custom', 'https://API.OPENAI.COM/v1/'), true);
+  assert.equal(isOpenAiApiProvider('custom', 'http://api.openai.com/v1'), false);
+  assert.equal(isOpenAiApiProvider('custom', 'https://example.com/v1'), false);
+  assert.equal(isOpenAiApiProvider('ollama', 'http://127.0.0.1:11434/v1'), false);
 });
 
 test('normalizeOpenAiBaseUrl strips trailing slashes and /chat/completions', () => {

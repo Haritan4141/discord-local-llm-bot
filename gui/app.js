@@ -37,6 +37,7 @@ const placeholderValues = new Set([
 const providerDefaults = {
   ollama: 'http://127.0.0.1:11434/v1',
   lmstudio: 'http://127.0.0.1:1234/v1',
+  openai: 'https://api.openai.com/v1',
   custom: '',
 };
 

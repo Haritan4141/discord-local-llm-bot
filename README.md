@@ -1,6 +1,6 @@
 # discord-local-llm-bot
 
-Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Ollama Web Search を使う `/webchat`、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
+Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Provider 別の Web Search、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
 
 ## 主な機能
 - 指定チャンネルのみ応答 (`CHANNEL_IDS` で制限)
@@ -8,9 +8,9 @@ Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) 
 - 会話履歴の簡易保持 (`LLM_MAX_HISTORY_MESSAGES`、既定値 30)
 - 画像添付を Vision 形式で LLM に送信
 - 通常メッセージのテキスト添付 (`.txt` など) を読み取り
-- `/webchat` で Ollama Web Search を使った検索付き会話
-- `/webchat` や `WEB_SEARCH_MODE=auto` の検索経路では、メッセージ内の URL を優先して直接取得
-- LLM Provider として Ollama / LM Studio / Custom OpenAI 互換 API を選択
+- `/webchat` で検索付き会話。OpenAI は Responses API の公式 `web_search`、その他は Ollama Web Search を使用
+- `WEB_SEARCH_MODE=auto` では、OpenAI のモデル自身または既存ルーターが必要なターンだけ検索
+- LLM Provider として Ollama / LM Studio / OpenAI / Custom OpenAI 互換 API を選択
 - `/systemprompt` によるチャンネル別の System Prompt 上書き
 - `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) 画像生成
 - `/music` で ComfyUI または ACE-Step による音楽生成
@@ -23,7 +23,7 @@ Discord 上でローカル LLM (Ollama / LM Studio などの OpenAI 互換 API) 
 - Discord Bot トークン
 - Discord Application の `CLIENT_ID`
 - ギルドコマンド登録を使う場合は Discord サーバーの `GUILD_ID`
-- Ollama または LM Studio (OpenAI 互換の chat/completions エンドポイント)
+- OpenAI API、または Ollama / LM Studio (OpenAI 互換の chat/completions エンドポイント)
 - Optional: Stable Diffusion WebUI (AUTOMATIC1111, `--api` 起動)
 - Optional: ComfyUI (`--listen` 起動) または ACE-Step API
 
@@ -47,8 +47,8 @@ start-gui.bat
 - `DISCORD_TOKEN`
 - `CLIENT_ID`
 - `CHANNEL_IDS` (カンマ区切りで複数可)
-- `LLM_PROVIDER` (`ollama`, `lmstudio`, `custom`)
-- `LLM_BASE_URL` (例: Ollama `http://127.0.0.1:11434/v1`, LM Studio `http://127.0.0.1:1234/v1`)
+- `LLM_PROVIDER` (`ollama`, `lmstudio`, `openai`, `custom`)
+- `LLM_BASE_URL` (例: Ollama `http://127.0.0.1:11434/v1`, LM Studio `http://127.0.0.1:1234/v1`, OpenAI `https://api.openai.com/v1`)
 - `LLM_MODEL` (例: `gemma3:12b`)
 - `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
 - `LLM_MAX_HISTORY_MESSAGES` (保持する会話履歴メッセージ数。既定値 `30`)
@@ -67,8 +67,20 @@ start-gui.bat
 - `STANDBY_REPLY_COOLDOWN_SECONDS` (同一ユーザー連投時のクールダウン秒数)
 
 `LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
-`WEB_SEARCH_MODE=auto` にすると、通常チャットでも LLM がそのターンで検索が必要かを判定し、必要なときだけ Ollama Web Search を使います。`manual` の場合は従来どおり `/webchat` のときだけ検索します。
-検索経路では、メッセージ本文に `https://...` 形式の URL が含まれている場合、その URL をまず直接取得します。必要な場合だけ追加で Web Search を併用します。
+`WEB_SEARCH_MODE=auto` にすると、通常チャットでも必要なときだけ検索します。OpenAI Provider または公式 API URL では Responses API に公式 `web_search` ツールを渡し、モデル自身が検索要否を判断します。それ以外では既存ルーターが判定して Ollama Web Search を使います。`manual` の場合は `/webchat` のときだけ検索します。
+OpenAI 以外の検索経路では、メッセージ本文に `https://...` 形式の URL が含まれている場合、その URL をまず直接取得します。OpenAI Provider では URL の取得も公式 `web_search` ツールに任せます。
+
+OpenAI の設定例:
+
+```env
+LLM_PROVIDER=openai
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-5.4-nano
+LLM_API_KEY=sk-proj-...
+WEB_SEARCH_MODE=auto
+```
+
+以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL が表示されます。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)
@@ -202,7 +214,7 @@ npm start
 - `/help` : ヘルプ表示
 - `/status` : 状態表示
 - `/chat [message] [image]` : LLM と会話 (画像は任意)
-- `/webchat [message]` : Ollama Web Search を使って最新情報つきで会話
+- `/webchat [message]` : Provider に応じた Web Search を使って最新情報つきで会話
 - `/systemprompt [text] [reset]` : このチャンネルの System Prompt を設定またはリセット
 - `/systemprompt-show` : 現在このチャンネルで有効な System Prompt を表示
 - `/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative]` : 画像生成
@@ -219,8 +231,8 @@ npm start
 - `src/bot.mjs` : Discord クライアントと全スラッシュコマンドハンドラ
 - `src/config.mjs` : `.env` 読込、検証、ランタイム定数
 - `src/utils/` : 共通ユーティリティ (`llm-config`, `env-file`, `text`, `http`)。`gui-server.mjs` からも import
-- `src/llm/` : OpenAI 互換チャットクライアントと診断ログ
-- `src/web/` : Ollama Web Search、コンテキスト生成、auto-route 判定
+- `src/llm/` : OpenAI Responses / OpenAI 互換 Chat Completions クライアントと診断ログ
+- `src/web/` : OpenAI 以外で使う Ollama Web Search、コンテキスト生成、auto-route 判定
 - `src/discord/` : チャンネル状態、画像添付、typing ループ、キュー処理
 - `src/sd/` : Stable Diffusion txt2img、日本語プロンプト翻訳
 - `src/music/` : ComfyUI / ACE-Step 共通キュー
@@ -280,8 +292,10 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 - Bot が `web_search` で候補を取得し、`web_fetch` で本文を取りに行ってから LLM に渡します
 - 返答の末尾に参照した source URL を表示します
 - `WEB_SEARCH_MODE=manual` では `/webchat` のときだけ検索します
-- `WEB_SEARCH_MODE=auto` では通常メッセージや `/chat` でもターンごとに検索要否を判定し、必要なときだけ検索します
-- 検索結果はトークンを多く使うため、Ollama / LM Studio の context length は大きめ推奨です
+- `WEB_SEARCH_MODE=auto` では通常メッセージや `/chat` でも必要なときだけ検索します
+- OpenAI は Responses API の公式 `web_search` を使い、`/webchat` では検索必須、通常チャットでは検索任意です
+- OpenAI 公式 API 以外は従来どおり Ollama Web Search と URL fetch を使います
+- 検索はモデルのトークン料金に加えて Provider 側の検索料金が発生する場合があります
 
 ## Remote Connection Example
 SD WebUI / ComfyUI を別マシンで動かす場合は、`.env` に接続先 URL を設定します。
