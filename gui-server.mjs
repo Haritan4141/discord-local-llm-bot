@@ -64,6 +64,8 @@ const ENV_SECTIONS = [
       { key: 'LLM_TEMPERATURE', label: 'LLM Temperature', type: 'number', placeholder: '0.4', min: 0, max: 2, step: 0.1, help: '通常チャットの temperature です。低いほど安定します。既定値は 0.4 です。' },
       { key: 'LLM_MAX_HISTORY_MESSAGES', label: 'Max History Messages', type: 'number', placeholder: '30', min: 0, step: 1, help: 'チャンネルごとの履歴として保持する最大メッセージ数です。system は別管理です。' },
       { key: 'WEB_SEARCH_MODE', label: 'Web Search Mode', type: 'select', options: ['manual', 'auto'], placeholder: 'manual', help: 'manual は /webchat のみ検索、auto は通常チャットでも検索を許可します。OpenAI ではモデル自身が検索要否を判断します。' },
+      { key: 'OPENAI_WEB_SEARCH_MAX_TOOL_CALLS', label: 'OpenAI Web Max Tool Calls', type: 'number', placeholder: '2', min: 1, max: 10, step: 1, help: 'OpenAI Responses の内蔵 Web ツールを 1 回の回答で呼べる上限です。検索・ページを開く・ページ内検索の合計で、既定値は 2 です。' },
+      { key: 'OPENAI_WEB_SEARCH_MAX_SOURCES', label: 'OpenAI Sources Display Limit', type: 'number', placeholder: '1', min: 0, max: 10, step: 1, help: 'Discord の回答末尾に表示する Sources URL の最大件数です。0 で非表示、既定値は 1 です。' },
       { key: 'BOT_TIMEZONE', label: 'Bot Timezone', type: 'text', placeholder: 'Asia/Tokyo', help: 'LLM に渡す現在時刻のタイムゾーンです。IANA 名で指定します。' },
       { key: 'LLM_API_KEY', label: 'API Key', type: 'password', placeholder: 'Ollama / LM Studio は通常不要です。' },
       { key: 'OLLAMA_KEEP_ALIVE', label: 'Ollama Keep Alive', type: 'text', placeholder: '30m / 1h / 3600 / -1', help: 'Ollama モデルの保持時間です。30m=30分、1h=1時間、3600=3600秒、-1=常時ロードです。' },
@@ -157,6 +159,10 @@ function buildGuiValues(values) {
   if (!next.LLM_TEMPERATURE) next.LLM_TEMPERATURE = '0.4';
   if (!next.LLM_MAX_HISTORY_MESSAGES) next.LLM_MAX_HISTORY_MESSAGES = '30';
   if (!next.WEB_SEARCH_MODE) next.WEB_SEARCH_MODE = 'manual';
+  if (!next.OPENAI_WEB_SEARCH_MAX_TOOL_CALLS) next.OPENAI_WEB_SEARCH_MAX_TOOL_CALLS = '2';
+  if (next.OPENAI_WEB_SEARCH_MAX_SOURCES == null || next.OPENAI_WEB_SEARCH_MAX_SOURCES === '') {
+    next.OPENAI_WEB_SEARCH_MAX_SOURCES = '1';
+  }
   if (!next.BOT_TIMEZONE) next.BOT_TIMEZONE = 'Asia/Tokyo';
   if (!next.LLM_API_KEY) next.LLM_API_KEY = '';
   if (!next.OLLAMA_KEEP_ALIVE && provider === 'ollama') next.OLLAMA_KEEP_ALIVE = '30m';

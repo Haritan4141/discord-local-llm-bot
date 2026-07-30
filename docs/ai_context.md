@@ -72,6 +72,7 @@
 - `/webchat` は `tool_choice=required`、`auto` は `tool_choice=auto`
 - 検索結果の引用元 URL を Discord 返信末尾に表示
 - OpenAI 返信末尾と GUI ログに Web 検索回数、参照 URL 数、推論トークン数を表示
+- OpenAI 内蔵 Web ツールは既定で 1 回の回答につき最大 2 回、Sources URL はリンクプレビューを抑制して最大 1 件表示
 - OpenAI 利用時は `OLLAMA_WEB_API_KEY` 不要
 - Payload 生成、応答解析、検索モード判定のユニットテストを追加
 

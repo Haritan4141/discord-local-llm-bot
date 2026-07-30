@@ -53,6 +53,8 @@ start-gui.bat
 - `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
 - `LLM_MAX_HISTORY_MESSAGES` (保持する会話履歴メッセージ数。既定値 `30`)
 - `WEB_SEARCH_MODE` (`manual` = `/webchat` のときだけ検索, `auto` = 通常チャットでも毎ターン検索要否を判定)
+- `OPENAI_WEB_SEARCH_MAX_TOOL_CALLS` (OpenAI の 1 回の回答で使える内蔵 Web ツール呼び出し上限。既定値 `2`)
+- `OPENAI_WEB_SEARCH_MAX_SOURCES` (Discord に表示する OpenAI Sources URL の上限。既定値 `1`、`0` で非表示。リンクプレビューは抑制)
 - `BOT_TIMEZONE` (LLM に渡す現在時刻の IANA タイムゾーン。既定値 `Asia/Tokyo`)
 
 任意の値:
@@ -78,9 +80,11 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-5.4-nano
 LLM_API_KEY=sk-proj-...
 WEB_SEARCH_MODE=auto
+OPENAI_WEB_SEARCH_MAX_TOOL_CALLS=2
+OPENAI_WEB_SEARCH_MAX_SOURCES=1
 ```
 
-以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL、Web 検索回数、参照 URL 数、推論トークン数が表示されます。Web 検索回数は Responses API の `search` アクション数で、引用元 URL 数とは一致しません。現在は 1 回の回答あたりの検索回数にハード上限を設定していません。
+以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL、Web 検索回数、参照 URL 数、推論トークン数が表示されます。Web 検索回数は Responses API の `search` アクション数で、引用元 URL 数とは一致しません。内蔵 Web ツールの呼び出しは既定で 1 回の回答につき最大 2 回、Sources URL の表示は既定で 1 件です。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)
@@ -296,6 +300,7 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 - OpenAI は Responses API の公式 `web_search` を使い、`/webchat` では検索必須、通常チャットでは検索任意です
 - OpenAI の返答末尾には Web 検索回数、参照 URL 数、推論トークン数を表示し、同じ数値を GUI ログにも記録します
 - `Sources` の件数は参照 URL 数であり、Web 検索回数ではありません
+- OpenAI の内蔵 Web ツールは既定で 1 回の回答につき最大 2 回、Sources URL はリンクプレビューを抑制して最大 1 件表示します。GUI で変更できます
 - OpenAI 公式 API 以外は従来どおり Ollama Web Search と URL fetch を使います
 - 検索はモデルのトークン料金に加えて Provider 側の検索料金が発生する場合があります
 

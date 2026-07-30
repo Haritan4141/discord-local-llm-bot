@@ -50,10 +50,12 @@ test('buildOpenAiResponsesPayload enables optional and required hosted search', 
   const auto = buildOpenAiResponsesPayload([], {
     model: 'gpt-5.4-nano',
     webSearch: 'auto',
+    maxToolCalls: 2,
   });
   assert.deepEqual(auto.tools, [{ type: 'web_search' }]);
   assert.equal(auto.tool_choice, 'auto');
   assert.deepEqual(auto.include, ['web_search_call.action.sources']);
+  assert.equal(auto.max_tool_calls, 2);
   assert.deepEqual(auto.reasoning, { effort: 'low' });
 
   const required = buildOpenAiResponsesPayload([], {
@@ -144,10 +146,27 @@ test('parseOpenAiResponsesResult extracts text, search state, and unique sources
   });
   assert.deepEqual(result.sources, [
     { url: 'https://example.com/a', title: 'Duplicate A' },
-    { url: 'https://example.com/c', title: 'Source C' },
-    { url: 'https://example.com/b', title: 'https://example.com/b' },
-    { url: 'https://example.com/d', title: 'Source D' },
   ]);
+});
+
+test('parseOpenAiResponsesResult allows hiding Sources while retaining the total', () => {
+  const result = parseOpenAiResponsesResult({
+    output: [
+      {
+        type: 'web_search_call',
+        action: {
+          type: 'search',
+          sources: [
+            { url: 'https://example.com/a' },
+            { url: 'https://example.com/b' },
+          ],
+        },
+      },
+    ],
+  }, { maxSources: 0 });
+
+  assert.equal(result.sourceCount, 2);
+  assert.deepEqual(result.sources, []);
 });
 
 test('formatOpenAiUsageSummary distinguishes search calls from source URLs', () => {

@@ -17,6 +17,8 @@ import {
   LLM_TEMPERATURE_VALUE,
   OLLAMA_KEEP_ALIVE,
   OLLAMA_WEB_API_KEY_VALUE,
+  OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE,
+  OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE,
   OPENAI_RESPONSES_ENABLED,
   WEB_SEARCH_MODE_VALUE,
   allowedChannelIds,
@@ -69,6 +71,10 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ LLM max history messages: ${LLM_MAX_HISTORY_MESSAGES_VALUE}`);
   console.log(`✅ Web search mode: ${WEB_SEARCH_MODE_VALUE}`);
   console.log(`✅ LLM API mode: ${OPENAI_RESPONSES_ENABLED ? 'OpenAI Responses' : 'Chat Completions'}`);
+  if (OPENAI_RESPONSES_ENABLED) {
+    console.log(`✅ OpenAI web max tool calls: ${OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE}`);
+    console.log(`✅ OpenAI Sources display limit: ${OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE}`);
+  }
   console.log(`✅ Timezone: ${BOT_TIMEZONE}`);
   if (LLM_PROVIDER_MODE === 'ollama') {
     const keepAliveText = OLLAMA_KEEP_ALIVE || '(server default)';

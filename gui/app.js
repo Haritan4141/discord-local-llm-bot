@@ -258,6 +258,14 @@ function validateField(field, control) {
     const numeric = Number(value);
     valid = Number.isInteger(numeric) && numeric >= 0;
   }
+  if (value && field.key === 'OPENAI_WEB_SEARCH_MAX_TOOL_CALLS') {
+    const numeric = Number(value);
+    valid = Number.isInteger(numeric) && numeric >= 1 && numeric <= 10;
+  }
+  if (value && field.key === 'OPENAI_WEB_SEARCH_MAX_SOURCES') {
+    const numeric = Number(value);
+    valid = Number.isInteger(numeric) && numeric >= 0 && numeric <= 10;
+  }
   if (value && field.key === 'STANDBY_REPLY_COOLDOWN_SECONDS') {
     const numeric = Number(value);
     valid = Number.isInteger(numeric) && numeric >= 0;

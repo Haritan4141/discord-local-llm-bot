@@ -44,6 +44,7 @@ export function resolveOpenAiWebSearchMode({ forceSearch = false, configuredMode
 
 export function buildOpenAiResponsesPayload(messages, options = {}) {
   const model = String(options.model || '').trim();
+  const maxToolCalls = Number(options.maxToolCalls);
   const webSearch = options.webSearch === 'required'
     ? 'required'
     : options.webSearch === 'auto'
@@ -60,6 +61,9 @@ export function buildOpenAiResponsesPayload(messages, options = {}) {
     payload.tools = [{ type: 'web_search' }];
     payload.tool_choice = webSearch;
     payload.include = ['web_search_call.action.sources'];
+    if (Number.isInteger(maxToolCalls) && maxToolCalls > 0) {
+      payload.max_tool_calls = maxToolCalls;
+    }
 
     // OpenAI notes that web search quality can be lower with reasoning disabled.
     if (modelSupportsOpenAiReasoning(model)) {
@@ -123,7 +127,7 @@ export function formatOpenAiUsageSummary(result) {
   ].join('\n');
 }
 
-export function parseOpenAiResponsesResult(json) {
+export function parseOpenAiResponsesResult(json, { maxSources = 1 } = {}) {
   const output = Array.isArray(json?.output) ? json.output : [];
   const textParts = [];
   const rawContent = [];
@@ -168,13 +172,16 @@ export function parseOpenAiResponsesResult(json) {
     if (!sourcesByUrl.has(url)) sourcesByUrl.set(url, source);
   }
   const sources = [...sourcesByUrl.values()];
+  const resolvedMaxSources = Number.isInteger(maxSources) && maxSources >= 0
+    ? maxSources
+    : 1;
   return {
     text,
     rawContent,
     finishReason: incompleteReason || json?.status || null,
     json,
     responseId: String(json?.id || ''),
-    sources: sources.slice(0, 10),
+    sources: sources.slice(0, resolvedMaxSources),
     sourceCount: sources.length,
     usedWebSearch,
     webSearchCallCount,
@@ -188,6 +195,8 @@ export async function callOpenAiResponses({
   messages,
   model,
   webSearch,
+  maxToolCalls,
+  maxSources,
   timeoutMs = 120000,
 }) {
   const controller = new AbortController();
@@ -197,7 +206,11 @@ export async function callOpenAiResponses({
     const res = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(buildOpenAiResponsesPayload(messages, { model, webSearch })),
+      body: JSON.stringify(buildOpenAiResponsesPayload(messages, {
+        model,
+        webSearch,
+        maxToolCalls,
+      })),
       signal: controller.signal,
     });
 
@@ -206,7 +219,7 @@ export async function callOpenAiResponses({
       throw new Error(`OpenAI Responses error: ${res.status} ${res.statusText}\n${bodyText}`);
     }
 
-    return parseOpenAiResponsesResult(await res.json());
+    return parseOpenAiResponsesResult(await res.json(), { maxSources });
   } finally {
     clearTimeout(timeout);
   }
