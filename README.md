@@ -80,7 +80,7 @@ LLM_API_KEY=sk-proj-...
 WEB_SEARCH_MODE=auto
 ```
 
-以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL が表示されます。
+以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL、Web 検索回数、参照 URL 数、推論トークン数が表示されます。Web 検索回数は Responses API の `search` アクション数で、引用元 URL 数とは一致しません。現在は 1 回の回答あたりの検索回数にハード上限を設定していません。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)
@@ -294,6 +294,8 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 - `WEB_SEARCH_MODE=manual` では `/webchat` のときだけ検索します
 - `WEB_SEARCH_MODE=auto` では通常メッセージや `/chat` でも必要なときだけ検索します
 - OpenAI は Responses API の公式 `web_search` を使い、`/webchat` では検索必須、通常チャットでは検索任意です
+- OpenAI の返答末尾には Web 検索回数、参照 URL 数、推論トークン数を表示し、同じ数値を GUI ログにも記録します
+- `Sources` の件数は参照 URL 数であり、Web 検索回数ではありません
 - OpenAI 公式 API 以外は従来どおり Ollama Web Search と URL fetch を使います
 - 検索はモデルのトークン料金に加えて Provider 側の検索料金が発生する場合があります
 

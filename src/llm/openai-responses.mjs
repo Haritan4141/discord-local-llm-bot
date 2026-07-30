@@ -89,6 +89,40 @@ function actionSource(source) {
   };
 }
 
+function nonNegativeInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return 0;
+  return Math.trunc(number);
+}
+
+function parseResponseUsage(json) {
+  const usage = json?.usage || {};
+  return {
+    inputTokens: nonNegativeInteger(usage.input_tokens),
+    cachedInputTokens: nonNegativeInteger(usage.input_tokens_details?.cached_tokens),
+    outputTokens: nonNegativeInteger(usage.output_tokens),
+    reasoningTokens: nonNegativeInteger(usage.output_tokens_details?.reasoning_tokens),
+    totalTokens: nonNegativeInteger(usage.total_tokens),
+  };
+}
+
+export function formatOpenAiUsageSummary(result) {
+  const searchCalls = nonNegativeInteger(result?.webSearchCallCount);
+  const sourceCount = nonNegativeInteger(
+    result?.sourceCount ?? (Array.isArray(result?.sources) ? result.sources.length : 0),
+  );
+  const displayedSourceCount = Array.isArray(result?.sources) ? result.sources.length : 0;
+  const sourceDisplaySuffix = sourceCount > displayedSourceCount
+    ? `（Sources表示: ${displayedSourceCount.toLocaleString('ja-JP')}件）`
+    : '';
+  const reasoningTokens = nonNegativeInteger(result?.usage?.reasoningTokens);
+
+  return [
+    `🔎 Web検索: ${searchCalls.toLocaleString('ja-JP')}回 / 参照URL: ${sourceCount.toLocaleString('ja-JP')}件${sourceDisplaySuffix}`,
+    `🧠 推論トークン: ${reasoningTokens.toLocaleString('ja-JP')}`,
+  ].join('\n');
+}
+
 export function parseOpenAiResponsesResult(json) {
   const output = Array.isArray(json?.output) ? json.output : [];
   const textParts = [];
@@ -96,6 +130,7 @@ export function parseOpenAiResponsesResult(json) {
   const citedSourcesByUrl = new Map();
   const consultedSourcesByUrl = new Map();
   let usedWebSearch = false;
+  let webSearchCallCount = 0;
 
   const addSource = (map, source) => {
     if (!source?.url || map.has(source.url)) return;
@@ -105,6 +140,7 @@ export function parseOpenAiResponsesResult(json) {
   for (const item of output) {
     if (item?.type === 'web_search_call') {
       usedWebSearch = true;
+      if (item?.action?.type === 'search') webSearchCallCount += 1;
       for (const source of item?.action?.sources || []) {
         addSource(consultedSourcesByUrl, actionSource(source));
       }
@@ -131,13 +167,18 @@ export function parseOpenAiResponsesResult(json) {
   for (const [url, source] of consultedSourcesByUrl) {
     if (!sourcesByUrl.has(url)) sourcesByUrl.set(url, source);
   }
+  const sources = [...sourcesByUrl.values()];
   return {
     text,
     rawContent,
     finishReason: incompleteReason || json?.status || null,
     json,
-    sources: [...sourcesByUrl.values()].slice(0, 10),
+    responseId: String(json?.id || ''),
+    sources: sources.slice(0, 10),
+    sourceCount: sources.length,
     usedWebSearch,
+    webSearchCallCount,
+    usage: parseResponseUsage(json),
   };
 }
 

@@ -6,7 +6,10 @@ import {
   WEB_SEARCH_MODE_VALUE,
 } from '../config.mjs';
 import { localLlmChat } from '../llm/chat.mjs';
-import { resolveOpenAiWebSearchMode } from '../llm/openai-responses.mjs';
+import {
+  formatOpenAiUsageSummary,
+  resolveOpenAiWebSearchMode,
+} from '../llm/openai-responses.mjs';
 import { logEmptyLlmResponse, logLlmTimeout } from '../llm/diagnostics.mjs';
 import {
   buildVisionImageContentPart,
@@ -276,11 +279,29 @@ export async function processQueue(channelId) {
           continue;
         }
         const cleaned = appendSourceUrls(normalizedReplyText, sourceUrls);
+        let displayedReply = cleaned;
+        if (OPENAI_RESPONSES_ENABLED) {
+          const usage = replyResult?.usage || {};
+          console.log(
+            [
+              '[openai] usage',
+              `response_id=${replyResult?.responseId || '-'}`,
+              `web_search_calls=${replyResult?.webSearchCallCount || 0}`,
+              `sources=${replyResult?.sourceCount || 0}`,
+              `input_tokens=${usage.inputTokens || 0}`,
+              `cached_input_tokens=${usage.cachedInputTokens || 0}`,
+              `output_tokens=${usage.outputTokens || 0}`,
+              `reasoning_tokens=${usage.reasoningTokens || 0}`,
+              `total_tokens=${usage.totalTokens || 0}`,
+            ].join(' '),
+          );
+          displayedReply = `${cleaned}\n\n${formatOpenAiUsageSummary(replyResult)}`;
+        }
 
         st.history.push({ role: 'assistant', content: cleaned });
         trimHistory(st.history, LLM_MAX_HISTORY_MESSAGES_VALUE);
 
-        const parts = splitForDiscord(cleaned);
+        const parts = splitForDiscord(displayedReply);
         await api.replyFirst(parts[0]);
         for (let i = 1; i < parts.length; i += 1) {
           await api.sendMore(parts[i]);
