@@ -26,6 +26,8 @@ const {
   LLM_TEMPERATURE,
   LLM_MAX_HISTORY_MESSAGES,
   WEB_SEARCH_MODE,
+  OPENAI_WEB_SEARCH_MAX_TOOL_CALLS,
+  OPENAI_WEB_SEARCH_MAX_SOURCES,
   OLLAMA_KEEP_ALIVE: OLLAMA_KEEP_ALIVE_ENV,
   OLLAMA_URL,
   OLLAMA_MODEL,
@@ -66,6 +68,8 @@ export const OLLAMA_KEEP_ALIVE = String(OLLAMA_KEEP_ALIVE_ENV || '').trim();
 const DEFAULT_LLM_TEMPERATURE = 0.4;
 const DEFAULT_LLM_MAX_HISTORY_MESSAGES = 30;
 const DEFAULT_WEB_SEARCH_MODE = 'manual';
+const DEFAULT_OPENAI_WEB_SEARCH_MAX_TOOL_CALLS = 2;
+const DEFAULT_OPENAI_WEB_SEARCH_MAX_SOURCES = 1;
 
 export function resolveLlmTemperature(value) {
   const raw = String(value ?? '').trim();
@@ -91,6 +95,32 @@ export function resolveWebSearchMode(value) {
   return DEFAULT_WEB_SEARCH_MODE;
 }
 
+function resolveIntegerInRange(value, fallback, min, max) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return fallback;
+  return parsed;
+}
+
+export function resolveOpenAiWebSearchMaxToolCalls(value) {
+  return resolveIntegerInRange(
+    value,
+    DEFAULT_OPENAI_WEB_SEARCH_MAX_TOOL_CALLS,
+    1,
+    10,
+  );
+}
+
+export function resolveOpenAiWebSearchMaxSources(value) {
+  return resolveIntegerInRange(
+    value,
+    DEFAULT_OPENAI_WEB_SEARCH_MAX_SOURCES,
+    0,
+    10,
+  );
+}
+
 export function resolveBotTimezone(value, { logger } = {}) {
   const raw = String(value ?? '').trim();
   if (!raw) return 'Asia/Tokyo';
@@ -106,6 +136,10 @@ export function resolveBotTimezone(value, { logger } = {}) {
 export const LLM_TEMPERATURE_VALUE = resolveLlmTemperature(LLM_TEMPERATURE);
 export const LLM_MAX_HISTORY_MESSAGES_VALUE = resolveLlmMaxHistoryMessages(LLM_MAX_HISTORY_MESSAGES);
 export const WEB_SEARCH_MODE_VALUE = resolveWebSearchMode(WEB_SEARCH_MODE);
+export const OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE =
+  resolveOpenAiWebSearchMaxToolCalls(OPENAI_WEB_SEARCH_MAX_TOOL_CALLS);
+export const OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE =
+  resolveOpenAiWebSearchMaxSources(OPENAI_WEB_SEARCH_MAX_SOURCES);
 export const BOT_TIMEZONE = resolveBotTimezone(BOT_TIMEZONE_ENV, {
   logger: raw => console.warn(`[config] invalid BOT_TIMEZONE=${JSON.stringify(raw)}, falling back to Asia/Tokyo`),
 });

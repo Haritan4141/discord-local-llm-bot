@@ -4,6 +4,8 @@ import {
   resolveBotTimezone,
   resolveLlmMaxHistoryMessages,
   resolveLlmTemperature,
+  resolveOpenAiWebSearchMaxSources,
+  resolveOpenAiWebSearchMaxToolCalls,
   resolveWebSearchMode,
 } from '../src/config.mjs';
 
@@ -38,6 +40,28 @@ test('resolveWebSearchMode only accepts auto', () => {
   assert.equal(resolveWebSearchMode('off'), 'manual');
   assert.equal(resolveWebSearchMode('AUTO'), 'auto');
   assert.equal(resolveWebSearchMode('auto'), 'auto');
+});
+
+test('resolveOpenAiWebSearchMaxToolCalls accepts 1 to 10 and defaults to 2', () => {
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls(undefined), 2);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls(''), 2);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls('0'), 2);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls('1.5'), 2);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls('11'), 2);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls('1'), 1);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls('2'), 2);
+  assert.equal(resolveOpenAiWebSearchMaxToolCalls('10'), 10);
+});
+
+test('resolveOpenAiWebSearchMaxSources accepts 0 to 10 and defaults to 1', () => {
+  assert.equal(resolveOpenAiWebSearchMaxSources(undefined), 1);
+  assert.equal(resolveOpenAiWebSearchMaxSources(''), 1);
+  assert.equal(resolveOpenAiWebSearchMaxSources('-1'), 1);
+  assert.equal(resolveOpenAiWebSearchMaxSources('1.5'), 1);
+  assert.equal(resolveOpenAiWebSearchMaxSources('11'), 1);
+  assert.equal(resolveOpenAiWebSearchMaxSources('0'), 0);
+  assert.equal(resolveOpenAiWebSearchMaxSources('1'), 1);
+  assert.equal(resolveOpenAiWebSearchMaxSources('10'), 10);
 });
 
 test('resolveBotTimezone validates IANA names and falls back', () => {

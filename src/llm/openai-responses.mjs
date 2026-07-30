@@ -44,6 +44,7 @@ export function resolveOpenAiWebSearchMode({ forceSearch = false, configuredMode
 
 export function buildOpenAiResponsesPayload(messages, options = {}) {
   const model = String(options.model || '').trim();
+  const maxToolCalls = Number(options.maxToolCalls);
   const webSearch = options.webSearch === 'required'
     ? 'required'
     : options.webSearch === 'auto'
@@ -60,6 +61,9 @@ export function buildOpenAiResponsesPayload(messages, options = {}) {
     payload.tools = [{ type: 'web_search' }];
     payload.tool_choice = webSearch;
     payload.include = ['web_search_call.action.sources'];
+    if (Number.isInteger(maxToolCalls) && maxToolCalls > 0) {
+      payload.max_tool_calls = maxToolCalls;
+    }
 
     // OpenAI notes that web search quality can be lower with reasoning disabled.
     if (modelSupportsOpenAiReasoning(model)) {
@@ -89,13 +93,48 @@ function actionSource(source) {
   };
 }
 
-export function parseOpenAiResponsesResult(json) {
+function nonNegativeInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return 0;
+  return Math.trunc(number);
+}
+
+function parseResponseUsage(json) {
+  const usage = json?.usage || {};
+  return {
+    inputTokens: nonNegativeInteger(usage.input_tokens),
+    cachedInputTokens: nonNegativeInteger(usage.input_tokens_details?.cached_tokens),
+    outputTokens: nonNegativeInteger(usage.output_tokens),
+    reasoningTokens: nonNegativeInteger(usage.output_tokens_details?.reasoning_tokens),
+    totalTokens: nonNegativeInteger(usage.total_tokens),
+  };
+}
+
+export function formatOpenAiUsageSummary(result) {
+  const searchCalls = nonNegativeInteger(result?.webSearchCallCount);
+  const sourceCount = nonNegativeInteger(
+    result?.sourceCount ?? (Array.isArray(result?.sources) ? result.sources.length : 0),
+  );
+  const displayedSourceCount = Array.isArray(result?.sources) ? result.sources.length : 0;
+  const sourceDisplaySuffix = sourceCount > displayedSourceCount
+    ? `（Sources表示: ${displayedSourceCount.toLocaleString('ja-JP')}件）`
+    : '';
+  const reasoningTokens = nonNegativeInteger(result?.usage?.reasoningTokens);
+
+  return [
+    `🔎 Web検索: ${searchCalls.toLocaleString('ja-JP')}回 / 参照URL: ${sourceCount.toLocaleString('ja-JP')}件${sourceDisplaySuffix}`,
+    `🧠 推論トークン: ${reasoningTokens.toLocaleString('ja-JP')}`,
+  ].join('\n');
+}
+
+export function parseOpenAiResponsesResult(json, { maxSources = 1 } = {}) {
   const output = Array.isArray(json?.output) ? json.output : [];
   const textParts = [];
   const rawContent = [];
   const citedSourcesByUrl = new Map();
   const consultedSourcesByUrl = new Map();
   let usedWebSearch = false;
+  let webSearchCallCount = 0;
 
   const addSource = (map, source) => {
     if (!source?.url || map.has(source.url)) return;
@@ -105,6 +144,7 @@ export function parseOpenAiResponsesResult(json) {
   for (const item of output) {
     if (item?.type === 'web_search_call') {
       usedWebSearch = true;
+      if (item?.action?.type === 'search') webSearchCallCount += 1;
       for (const source of item?.action?.sources || []) {
         addSource(consultedSourcesByUrl, actionSource(source));
       }
@@ -131,13 +171,21 @@ export function parseOpenAiResponsesResult(json) {
   for (const [url, source] of consultedSourcesByUrl) {
     if (!sourcesByUrl.has(url)) sourcesByUrl.set(url, source);
   }
+  const sources = [...sourcesByUrl.values()];
+  const resolvedMaxSources = Number.isInteger(maxSources) && maxSources >= 0
+    ? maxSources
+    : 1;
   return {
     text,
     rawContent,
     finishReason: incompleteReason || json?.status || null,
     json,
-    sources: [...sourcesByUrl.values()].slice(0, 10),
+    responseId: String(json?.id || ''),
+    sources: sources.slice(0, resolvedMaxSources),
+    sourceCount: sources.length,
     usedWebSearch,
+    webSearchCallCount,
+    usage: parseResponseUsage(json),
   };
 }
 
@@ -147,6 +195,8 @@ export async function callOpenAiResponses({
   messages,
   model,
   webSearch,
+  maxToolCalls,
+  maxSources,
   timeoutMs = 120000,
 }) {
   const controller = new AbortController();
@@ -156,7 +206,11 @@ export async function callOpenAiResponses({
     const res = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(buildOpenAiResponsesPayload(messages, { model, webSearch })),
+      body: JSON.stringify(buildOpenAiResponsesPayload(messages, {
+        model,
+        webSearch,
+        maxToolCalls,
+      })),
       signal: controller.signal,
     });
 
@@ -165,7 +219,7 @@ export async function callOpenAiResponses({
       throw new Error(`OpenAI Responses error: ${res.status} ${res.statusText}\n${bodyText}`);
     }
 
-    return parseOpenAiResponsesResult(await res.json());
+    return parseOpenAiResponsesResult(await res.json(), { maxSources });
   } finally {
     clearTimeout(timeout);
   }

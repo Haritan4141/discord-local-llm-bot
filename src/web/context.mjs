@@ -129,7 +129,7 @@ export function buildWebChatMessages(history, userText, webContext) {
 export function appendSourceUrls(text, sources) {
   if (!Array.isArray(sources) || sources.length === 0) return text;
   const sourceBlock = sources
-    .map((source, index) => `${index + 1}. ${source.title || source.url}\n${source.url}`)
+    .map((source, index) => `${index + 1}. ${source.title || source.url}\n<${source.url}>`)
     .join('\n');
   return `${text}\n\nSources:\n${sourceBlock}`;
 }

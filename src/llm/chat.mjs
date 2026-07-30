@@ -7,6 +7,8 @@ import {
   LLM_TEMPERATURE_VALUE,
   OLLAMA_KEEP_ALIVE,
   OLLAMA_NATIVE_BASE_URL,
+  OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE,
+  OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE,
   OPENAI_RESPONSES_ENABLED,
   llmHeaders,
   normalizeOllamaKeepAliveForApi,
@@ -56,6 +58,8 @@ export async function localLlmChat(messages, options = {}) {
       messages: finalMessages,
       model: options.model || LLM_MODEL_NAME,
       webSearch: options.webSearch,
+      maxToolCalls: OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE,
+      maxSources: OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE,
     });
   }
 
