@@ -2,9 +2,11 @@ import {
   LLM_MAX_HISTORY_MESSAGES_VALUE,
   LLM_PROVIDER_MODE,
   LLM_TEMPERATURE_VALUE,
+  OPENAI_RESPONSES_ENABLED,
   WEB_SEARCH_MODE_VALUE,
 } from '../config.mjs';
 import { localLlmChat } from '../llm/chat.mjs';
+import { resolveOpenAiWebSearchMode } from '../llm/openai-responses.mjs';
 import { logEmptyLlmResponse, logLlmTimeout } from '../llm/diagnostics.mjs';
 import {
   buildVisionImageContentPart,
@@ -164,7 +166,12 @@ export async function processQueue(channelId) {
           };
         }
 
-        if (!useWebSearch && WEB_SEARCH_MODE_VALUE === 'auto' && !imageAtt) {
+        if (
+          !OPENAI_RESPONSES_ENABLED
+          && !useWebSearch
+          && WEB_SEARCH_MODE_VALUE === 'auto'
+          && !imageAtt
+        ) {
           if (directUrls.length) {
             useWebSearch = true;
           } else {
@@ -197,6 +204,31 @@ export async function processQueue(channelId) {
           ];
 
           replyResult = await localLlmChat(messagesToSend, normalChatOptions);
+        } else if (OPENAI_RESPONSES_ENABLED) {
+          if (textAttachment) {
+            messagesToSend = [
+              ...st.history.slice(0, -1),
+              {
+                role: 'user',
+                content: buildUserMessageText({
+                  name,
+                  text,
+                  textAttachment,
+                }),
+              },
+            ];
+          }
+
+          const openAiWebSearch = resolveOpenAiWebSearchMode({
+            forceSearch: !!item.webSearch,
+            configuredMode: WEB_SEARCH_MODE_VALUE,
+          });
+          replyResult = await localLlmChat(messagesToSend, {
+            ...normalChatOptions,
+            webSearch: openAiWebSearch,
+          });
+          sourceUrls = Array.isArray(replyResult?.sources) ? replyResult.sources : [];
+          useWebSearch = !!replyResult?.usedWebSearch;
         } else if (useWebSearch) {
           const webContext = await buildWebSearchContext({
             query: webSearchQuery,

@@ -17,6 +17,7 @@ import {
   LLM_TEMPERATURE_VALUE,
   OLLAMA_KEEP_ALIVE,
   OLLAMA_WEB_API_KEY_VALUE,
+  OPENAI_RESPONSES_ENABLED,
   WEB_SEARCH_MODE_VALUE,
   allowedChannelIds,
   assertRuntimeConfig,
@@ -67,6 +68,7 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ LLM temperature: ${LLM_TEMPERATURE_VALUE}`);
   console.log(`✅ LLM max history messages: ${LLM_MAX_HISTORY_MESSAGES_VALUE}`);
   console.log(`✅ Web search mode: ${WEB_SEARCH_MODE_VALUE}`);
+  console.log(`✅ LLM API mode: ${OPENAI_RESPONSES_ENABLED ? 'OpenAI Responses' : 'Chat Completions'}`);
   console.log(`✅ Timezone: ${BOT_TIMEZONE}`);
   if (LLM_PROVIDER_MODE === 'ollama') {
     const keepAliveText = OLLAMA_KEEP_ALIVE || '(server default)';
@@ -142,6 +144,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           `• llm temperature: \`${LLM_TEMPERATURE_VALUE}\``,
           `• llm max history: \`${LLM_MAX_HISTORY_MESSAGES_VALUE}\``,
           `• web search mode: \`${WEB_SEARCH_MODE_VALUE}\``,
+          `• web search backend: \`${OPENAI_RESPONSES_ENABLED ? 'OpenAI web_search' : 'Ollama Web Search'}\``,
           `• ollama web search: \`${String(!!String(OLLAMA_WEB_API_KEY_VALUE || '').trim())}\``,
           `• history: \`${histLen}\` messages`,
           `• queue: \`${queueLen}\``,

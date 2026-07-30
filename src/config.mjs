@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   defaultLlmBaseUrl,
+  isOpenAiApiProvider,
   normalizeOpenAiBaseUrl,
   nativeOllamaBaseUrl,
   numEnv,
@@ -120,6 +121,13 @@ export const LLM_BASE_URL_RESOLVED = resolveLlmBaseUrl();
 export const LLM_CHAT_COMPLETIONS_URL = LLM_BASE_URL_RESOLVED
   ? `${LLM_BASE_URL_RESOLVED}/chat/completions`
   : '';
+export const LLM_RESPONSES_URL = LLM_BASE_URL_RESOLVED
+  ? `${LLM_BASE_URL_RESOLVED}/responses`
+  : '';
+export const OPENAI_RESPONSES_ENABLED = isOpenAiApiProvider(
+  LLM_PROVIDER_MODE,
+  LLM_BASE_URL_RESOLVED,
+);
 export const OLLAMA_NATIVE_BASE_URL = LLM_PROVIDER_MODE === 'ollama'
   ? nativeOllamaBaseUrl(LLM_BASE_URL_RESOLVED)
   : '';
@@ -159,6 +167,9 @@ export function assertRuntimeConfig() {
   if (allowedChannelIds.size === 0) throw new Error('CHANNEL_IDS が .env に設定されていません');
   if (!LLM_CHAT_COMPLETIONS_URL) throw new Error('LLM_BASE_URL または OLLAMA_URL が .env に設定されていません');
   if (!LLM_MODEL_NAME) throw new Error('LLM_MODEL または OLLAMA_MODEL が .env に設定されていません');
+  if (OPENAI_RESPONSES_ENABLED && !LLM_API_KEY) {
+    throw new Error('OpenAI API を使うには LLM_API_KEY を .env に設定してください');
+  }
 }
 
 // Re-export low-level utilities for callers that import config.mjs directly.

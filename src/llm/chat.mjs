@@ -3,13 +3,16 @@ import {
   LLM_CHAT_COMPLETIONS_URL,
   LLM_MODEL_NAME,
   LLM_PROVIDER_MODE,
+  LLM_RESPONSES_URL,
   LLM_TEMPERATURE_VALUE,
   OLLAMA_KEEP_ALIVE,
   OLLAMA_NATIVE_BASE_URL,
+  OPENAI_RESPONSES_ENABLED,
   llmHeaders,
   normalizeOllamaKeepAliveForApi,
 } from '../config.mjs';
 import { fetchJsonWithTimeout } from '../utils/http.mjs';
+import { callOpenAiResponses } from './openai-responses.mjs';
 
 export function getCurrentDateContextText() {
   const now = new Date();
@@ -46,6 +49,16 @@ export function injectRuntimeSystemMessages(messages, extraSystemContents = []) 
 
 export async function localLlmChat(messages, options = {}) {
   const finalMessages = injectRuntimeSystemMessages(messages, options.extraSystemContents || []);
+  if (OPENAI_RESPONSES_ENABLED) {
+    return callOpenAiResponses({
+      url: LLM_RESPONSES_URL,
+      headers: llmHeaders(),
+      messages: finalMessages,
+      model: options.model || LLM_MODEL_NAME,
+      webSearch: options.webSearch,
+    });
+  }
+
   const payload = {
     model: options.model || LLM_MODEL_NAME,
     messages: finalMessages,
