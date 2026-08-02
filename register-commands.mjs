@@ -70,7 +70,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("draw")
-    .setDescription("Stable Diffusion WebUI で画像生成をします。")
+    .setDescription("設定した画像生成Providerで画像を生成します。")
     .addStringOption(option =>
       option
         .setName("prompt")
@@ -92,37 +92,37 @@ const commands = [
     .addIntegerOption(option =>
       option
         .setName("steps")
-        .setDescription("Sampling steps")
+        .setDescription("Sampling steps (Stable Diffusion only)")
         .setRequired(false)
     )
     .addNumberOption(option =>
       option
         .setName("cfg")
-        .setDescription("CFG scale")
+        .setDescription("CFG scale (Stable Diffusion only)")
         .setRequired(false)
     )
     .addStringOption(option =>
       option
         .setName("sampler")
-        .setDescription("Sampler name")
+        .setDescription("Sampler name (Stable Diffusion only)")
         .setRequired(false)
     )
     .addIntegerOption(option =>
       option
         .setName("seed")
-        .setDescription("Seed (-1 for random)")
+        .setDescription("Seed (-1 for random, Stable Diffusion only)")
         .setRequired(false)
     )
     .addIntegerOption(option =>
       option
         .setName("batch")
-        .setDescription("Batch size")
+        .setDescription("Number of images (1-4)")
         .setRequired(false)
     )
     .addStringOption(option =>
       option
         .setName("negative")
-        .setDescription("Negative prompt")
+        .setDescription("Negative prompt (Stable Diffusion only)")
         .setRequired(false)
     ),
 

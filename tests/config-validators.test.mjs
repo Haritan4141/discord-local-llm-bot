@@ -4,10 +4,30 @@ import {
   resolveBotTimezone,
   resolveLlmMaxHistoryMessages,
   resolveLlmTemperature,
+  resolveImageProvider,
+  resolveOpenAiImageQuality,
   resolveOpenAiWebSearchMaxSources,
   resolveOpenAiWebSearchMaxToolCalls,
   resolveWebSearchMode,
 } from '../src/config.mjs';
+
+test('resolveImageProvider accepts explicit providers and follows the OpenAI LLM default', () => {
+  assert.equal(resolveImageProvider('openai'), 'openai');
+  assert.equal(resolveImageProvider('stable-diffusion'), 'stable-diffusion');
+  assert.equal(resolveImageProvider('SD'), 'stable-diffusion');
+  assert.equal(resolveImageProvider('', { openAiLlm: true }), 'openai');
+  assert.equal(resolveImageProvider('', { openAiLlm: false }), 'stable-diffusion');
+  assert.equal(resolveImageProvider('unknown', { openAiLlm: true }), 'openai');
+});
+
+test('resolveOpenAiImageQuality accepts supported values and defaults to low', () => {
+  assert.equal(resolveOpenAiImageQuality('AUTO'), 'auto');
+  assert.equal(resolveOpenAiImageQuality('low'), 'low');
+  assert.equal(resolveOpenAiImageQuality('medium'), 'medium');
+  assert.equal(resolveOpenAiImageQuality('high'), 'high');
+  assert.equal(resolveOpenAiImageQuality(''), 'low');
+  assert.equal(resolveOpenAiImageQuality('ultra'), 'low');
+});
 
 test('resolveLlmTemperature clamps invalid input to the default', () => {
   assert.equal(resolveLlmTemperature(undefined), 0.4);

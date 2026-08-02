@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 
 import {
   defaultLlmBaseUrl,
+  isOpenAiApiProvider,
   nativeOllamaBaseUrl,
   normalizeOpenAiBaseUrl,
 } from './src/utils/llm-config.mjs';
@@ -85,9 +86,14 @@ const ENV_SECTIONS = [
   },
   {
     id: 'stable-diffusion',
-    title: 'Stable Diffusion WebUI (/draw)',
-    description: 'AUTOMATIC1111 の txt2img API に送る既定値です。',
+    title: 'Image Generation (/draw)',
+    description: 'OpenAI Image API または AUTOMATIC1111 の画像生成設定です。',
     fields: [
+      { key: 'IMAGE_PROVIDER', label: 'Image Provider', type: 'select', options: ['openai', 'stable-diffusion'], placeholder: 'LLM Provider が OpenAI なら openai、それ以外は stable-diffusion', help: '/draw の画像生成先です。OpenAI を選ぶと gpt-image-2 を直接呼び出します。' },
+      { key: 'OPENAI_IMAGE_MODEL', label: 'OpenAI Image Model', type: 'text', placeholder: 'gpt-image-2', help: 'OpenAI Image API で使うモデルです。既定値は gpt-image-2 です。' },
+      { key: 'OPENAI_IMAGE_QUALITY', label: 'OpenAI Image Quality', type: 'select', options: ['low', 'medium', 'high', 'auto'], placeholder: 'low', help: '既定値は料金を抑えやすい low です。1024x1024 の目安は low $0.006、medium $0.053、high $0.211/枚（2026-08-02確認）です。' },
+      { key: 'OPENAI_IMAGE_SIZE', label: 'OpenAI Default Size', type: 'text', placeholder: '1024x1024', help: '/draw で width / height を省略した場合のサイズです。各辺は16px単位です。' },
+      { key: 'OPENAI_IMAGE_API_KEY', label: 'OpenAI Image API Key', type: 'password', placeholder: '空欄なら LLM_API_KEY を使います。' },
       { key: 'SD_WEBUI_URL', label: 'SD WebUI URL', type: 'url', placeholder: 'http://127.0.0.1:7860' },
       { key: 'SD_WIDTH', label: 'Default Width', type: 'number', placeholder: '1024' },
       { key: 'SD_HEIGHT', label: 'Default Height', type: 'number', placeholder: '1024' },
@@ -165,6 +171,15 @@ function buildGuiValues(values) {
   }
   if (!next.BOT_TIMEZONE) next.BOT_TIMEZONE = 'Asia/Tokyo';
   if (!next.LLM_API_KEY) next.LLM_API_KEY = '';
+  if (!next.IMAGE_PROVIDER) {
+    next.IMAGE_PROVIDER = isOpenAiApiProvider(provider, next.LLM_BASE_URL)
+      ? 'openai'
+      : 'stable-diffusion';
+  }
+  if (!next.OPENAI_IMAGE_MODEL) next.OPENAI_IMAGE_MODEL = 'gpt-image-2';
+  if (!next.OPENAI_IMAGE_QUALITY) next.OPENAI_IMAGE_QUALITY = 'low';
+  if (!next.OPENAI_IMAGE_SIZE) next.OPENAI_IMAGE_SIZE = '1024x1024';
+  if (!next.OPENAI_IMAGE_API_KEY) next.OPENAI_IMAGE_API_KEY = '';
   if (!next.OLLAMA_KEEP_ALIVE && provider === 'ollama') next.OLLAMA_KEEP_ALIVE = '30m';
   if (!next.STANDBY_REPLY_MESSAGE) {
     next.STANDBY_REPLY_MESSAGE = '現在メイン Bot は停止中です。しばらくしてからもう一度試してください。';
