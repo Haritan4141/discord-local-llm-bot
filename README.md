@@ -1,6 +1,6 @@
 # discord-local-llm-bot
 
-Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Provider 別の Web Search、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
+Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Provider 別の Web Search、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
 
 ## 主な機能
 - 指定チャンネルのみ応答 (`CHANNEL_IDS` で制限)
@@ -12,7 +12,7 @@ Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API 
 - `WEB_SEARCH_MODE=auto` では、OpenAI のモデル自身または既存ルーターが必要なターンだけ検索
 - LLM Provider として Ollama / LM Studio / OpenAI / Custom OpenAI 互換 API を選択
 - `/systemprompt` によるチャンネル別の System Prompt 上書き
-- `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) 画像生成
+- `/draw` で OpenAI Image API (`gpt-image-2`) または Stable Diffusion WebUI 画像生成
 - `/music` で ComfyUI または ACE-Step による音楽生成
 - `/othello` でオセロ (VS AI) をリアクション操作でプレイ
 - `/pause` / `/resume` / `/reset` によるチャンネル単位の制御
@@ -67,6 +67,11 @@ start-gui.bat
 - `STANDBY_CHANNEL_IDS` (Standby Bot の対象チャンネル。空欄なら `CHANNEL_IDS`)
 - `STANDBY_REPLY_MESSAGE` (Standby Bot の固定返信)
 - `STANDBY_REPLY_COOLDOWN_SECONDS` (同一ユーザー連投時のクールダウン秒数)
+- `IMAGE_PROVIDER` (`openai` または `stable-diffusion`。未設定時は OpenAI LLM なら `openai`)
+- `OPENAI_IMAGE_MODEL` (既定値 `gpt-image-2`)
+- `OPENAI_IMAGE_QUALITY` (`low`, `medium`, `high`, `auto`。既定値 `low`)
+- `OPENAI_IMAGE_SIZE` (`1024x1024` など。既定値 `1024x1024`)
+- `OPENAI_IMAGE_API_KEY` (空欄なら `LLM_API_KEY` を使用)
 
 `LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
 `WEB_SEARCH_MODE=auto` にすると、通常チャットでも必要なときだけ検索します。OpenAI Provider または公式 API URL では Responses API に公式 `web_search` ツールを渡し、モデル自身が検索要否を判断します。それ以外では既存ルーターが判定して Ollama Web Search を使います。`manual` の場合は `/webchat` のときだけ検索します。
@@ -82,6 +87,10 @@ LLM_API_KEY=sk-proj-...
 WEB_SEARCH_MODE=auto
 OPENAI_WEB_SEARCH_MAX_TOOL_CALLS=2
 OPENAI_WEB_SEARCH_MAX_SOURCES=1
+IMAGE_PROVIDER=openai
+OPENAI_IMAGE_MODEL=gpt-image-2
+OPENAI_IMAGE_QUALITY=low
+OPENAI_IMAGE_SIZE=1024x1024
 ```
 
 以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL、Web 検索回数、参照 URL 数、推論トークン数が表示されます。Web 検索回数は Responses API の `search` アクション数で、引用元 URL 数とは一致しません。内蔵 Web ツールの呼び出しは既定で 1 回の回答につき最大 2 回、Sources URL の表示は既定で 1 件です。
@@ -238,6 +247,7 @@ npm start
 - `src/llm/` : OpenAI Responses / OpenAI 互換 Chat Completions クライアントと診断ログ
 - `src/web/` : OpenAI 以外で使う Ollama Web Search、コンテキスト生成、auto-route 判定
 - `src/discord/` : チャンネル状態、画像添付、typing ループ、キュー処理
+- `src/image/` : OpenAI Image API による画像生成
 - `src/sd/` : Stable Diffusion txt2img、日本語プロンプト翻訳
 - `src/music/` : ComfyUI / ACE-Step 共通キュー
 - `src/othello/` : 盤面・AI・PNG 描画・ゲーム進行
@@ -247,14 +257,39 @@ npm start
 
 ## テスト
 - `npm run check` : 全 `.mjs` ファイルの構文チェック
-- `npm test` : `npm run check` + `node --test tests/` (現在 52 件、純関数を中心に検証)
+- `npm test` : `npm run check` + `node --test tests/` (現在 71 件、純関数を中心に検証)
 
 ## `/draw` 例
 ```text
-/draw prompt:"a cute cat" width:512 height:512 steps:25 cfg:7 sampler:"Euler a"
+/draw prompt:"月面で宇宙服を着た白い猫" width:1024 height:1024 batch:1
 ```
 
-数値オプションは事故防止のためにクランプされます: `width` / `height` は 64〜2048、`steps` は 1〜150、`cfg` は 1〜30、`batch` は 1〜4。
+`IMAGE_PROVIDER=openai` の場合は Image API の `gpt-image-2` を直接呼び出します。`width` / `height` は各辺16px単位、最大3840px、総画素数655,360〜8,294,400、縦横比3:1以内で指定します。`batch` は1〜4です。`steps` / `cfg` / `sampler` / `seed` / `negative` は Stable Diffusion の場合だけ使われます。
+
+OpenAI Image API の設定例:
+
+```env
+IMAGE_PROVIDER=openai
+OPENAI_IMAGE_MODEL=gpt-image-2
+OPENAI_IMAGE_QUALITY=low
+OPENAI_IMAGE_SIZE=1024x1024
+# 空欄なら LLM_API_KEY を使用
+OPENAI_IMAGE_API_KEY=
+```
+
+OpenAI の組織設定によっては、GPT Image モデルを使う前に Organization Verification が必要です。
+
+`gpt-image-2` の標準API料金（2026-08-02確認、1024x1024の画像出力目安）:
+
+| Quality | 1枚 | 100枚 |
+| --- | ---: | ---: |
+| Low | $0.006 | $0.60 |
+| Medium | $0.053 | $5.30 |
+| High | $0.211 | $21.10 |
+
+このほか、プロンプトのテキスト入力は100万トークンあたり$5です。通常の短い画像プロンプトでは画像出力料金に比べて小額です。最新料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) と [Image generation calculator](https://developers.openai.com/api/docs/guides/image-generation#calculating-costs) を確認してください。`batch`を増やすと、おおむね生成枚数に比例して料金が増えます。
+
+`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。
 
 日本語プロンプトを英語に翻訳して SD WebUI に送る場合:
 

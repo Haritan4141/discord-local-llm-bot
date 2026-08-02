@@ -16,7 +16,7 @@
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/systemprompt` でチャンネル単位の System Prompt 上書き、`/systemprompt-show` で現在設定を表示
-- `/draw` で Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
+- `/draw` で OpenAI Image API (`gpt-image-2`) または Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
 - `/music` で ComfyUI または ACE-Step を使った音楽生成を呼び出し
 - `/othello` でリアクション操作のオセロ (VS AI) を開始
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
@@ -43,6 +43,7 @@
 - `src/discord/queue.mjs` : `processQueue` (画像 / 通常 / web 検索の分岐含む)
 - `src/standby/config.mjs` / `src/standby/bot.mjs` : 同じ Bot を使う Standby モードの設定と本体
 - `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
+- `src/image/openai.mjs` : OpenAI Image API の画像生成、サイズ検証、レスポンス解析
 - `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
 - `src/othello/board.mjs` / `ai.mjs` / `render.mjs` / `game.mjs` : 盤面・AI・PNG 描画・進行
 - `gui-server.mjs` : ローカル GUI サーバー (`http://127.0.0.1:3150`)
@@ -89,4 +90,4 @@
 - UTF-8 でファイルを保存すること
 - 日本語の文字化けに注意 (特に `src/**/*.mjs`, `gui/`, `.env.example`, `README.md`)
 - GUI は起動毎にランダムな `X-GUI-Token` を発行し、`Host` / `Origin` ヘッダも検証する。改造する際は `gui/index.html` の `<meta name="gui-token">` と `gui/app.js` の `GUI_TOKEN` を維持すること
-- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 52 件) が走る。純関数を変更したら必要に応じてテストを追加する
+- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 71 件) が走る。純関数を変更したら必要に応じてテストを追加する

@@ -28,6 +28,11 @@ const {
   WEB_SEARCH_MODE,
   OPENAI_WEB_SEARCH_MAX_TOOL_CALLS,
   OPENAI_WEB_SEARCH_MAX_SOURCES,
+  IMAGE_PROVIDER,
+  OPENAI_IMAGE_MODEL,
+  OPENAI_IMAGE_QUALITY,
+  OPENAI_IMAGE_SIZE,
+  OPENAI_IMAGE_API_KEY,
   OLLAMA_KEEP_ALIVE: OLLAMA_KEEP_ALIVE_ENV,
   OLLAMA_URL,
   OLLAMA_MODEL,
@@ -121,6 +126,19 @@ export function resolveOpenAiWebSearchMaxSources(value) {
   );
 }
 
+export function resolveImageProvider(value, { openAiLlm = false } = {}) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (raw === 'openai') return 'openai';
+  if (raw === 'stable-diffusion' || raw === 'sd') return 'stable-diffusion';
+  return openAiLlm ? 'openai' : 'stable-diffusion';
+}
+
+export function resolveOpenAiImageQuality(value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (['auto', 'low', 'medium', 'high'].includes(raw)) return raw;
+  return 'low';
+}
+
 export function resolveBotTimezone(value, { logger } = {}) {
   const raw = String(value ?? '').trim();
   if (!raw) return 'Asia/Tokyo';
@@ -162,6 +180,14 @@ export const OPENAI_RESPONSES_ENABLED = isOpenAiApiProvider(
   LLM_PROVIDER_MODE,
   LLM_BASE_URL_RESOLVED,
 );
+export const IMAGE_PROVIDER_MODE = resolveImageProvider(IMAGE_PROVIDER, {
+  openAiLlm: OPENAI_RESPONSES_ENABLED,
+});
+export const OPENAI_IMAGE_MODEL_NAME = String(OPENAI_IMAGE_MODEL || 'gpt-image-2').trim();
+export const OPENAI_IMAGE_QUALITY_VALUE = resolveOpenAiImageQuality(OPENAI_IMAGE_QUALITY);
+export const OPENAI_IMAGE_SIZE_VALUE = String(OPENAI_IMAGE_SIZE || '1024x1024').trim();
+export const OPENAI_IMAGE_API_KEY_VALUE = OPENAI_IMAGE_API_KEY || LLM_API_KEY;
+export const OPENAI_IMAGE_GENERATIONS_URL = 'https://api.openai.com/v1/images/generations';
 export const OLLAMA_NATIVE_BASE_URL = LLM_PROVIDER_MODE === 'ollama'
   ? nativeOllamaBaseUrl(LLM_BASE_URL_RESOLVED)
   : '';
@@ -203,6 +229,9 @@ export function assertRuntimeConfig() {
   if (!LLM_MODEL_NAME) throw new Error('LLM_MODEL または OLLAMA_MODEL が .env に設定されていません');
   if (OPENAI_RESPONSES_ENABLED && !LLM_API_KEY) {
     throw new Error('OpenAI API を使うには LLM_API_KEY を .env に設定してください');
+  }
+  if (IMAGE_PROVIDER_MODE === 'openai' && !OPENAI_IMAGE_API_KEY_VALUE) {
+    throw new Error('OpenAI 画像生成を使うには LLM_API_KEY または OPENAI_IMAGE_API_KEY を .env に設定してください');
   }
 }
 

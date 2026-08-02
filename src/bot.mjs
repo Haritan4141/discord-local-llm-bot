@@ -9,7 +9,9 @@ import {
 
 import {
   BOT_TIMEZONE,
+  DISCORD_MAX_ATTACHMENT_BYTES,
   DISCORD_TOKEN_VALUE,
+  IMAGE_PROVIDER_MODE,
   LLM_BASE_URL_RESOLVED,
   LLM_MAX_HISTORY_MESSAGES_VALUE,
   LLM_MODEL_NAME,
@@ -20,6 +22,11 @@ import {
   OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE,
   OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE,
   OPENAI_RESPONSES_ENABLED,
+  OPENAI_IMAGE_API_KEY_VALUE,
+  OPENAI_IMAGE_GENERATIONS_URL,
+  OPENAI_IMAGE_MODEL_NAME,
+  OPENAI_IMAGE_QUALITY_VALUE,
+  OPENAI_IMAGE_SIZE_VALUE,
   WEB_SEARCH_MODE_VALUE,
   allowedChannelIds,
   assertRuntimeConfig,
@@ -31,6 +38,7 @@ import { getState, stateByChannel } from './discord/state.mjs';
 import { processQueue } from './discord/queue.mjs';
 import { pickImageFromInteraction } from './discord/images.mjs';
 import { translatePromptForSd, sdTxt2Img } from './sd/draw.mjs';
+import { generateOpenAiImages, resolveOpenAiImageSize } from './image/openai.mjs';
 import {
   isMusicProcessing,
   musicQueue,
@@ -74,6 +82,12 @@ client.once(Events.ClientReady, () => {
   if (OPENAI_RESPONSES_ENABLED) {
     console.log(`✅ OpenAI web max tool calls: ${OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE}`);
     console.log(`✅ OpenAI Sources display limit: ${OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE}`);
+  }
+  console.log(`✅ Image provider: ${IMAGE_PROVIDER_MODE}`);
+  if (IMAGE_PROVIDER_MODE === 'openai') {
+    console.log(`✅ OpenAI image model: ${OPENAI_IMAGE_MODEL_NAME}`);
+    console.log(`✅ OpenAI image quality: ${OPENAI_IMAGE_QUALITY_VALUE}`);
+    console.log(`✅ OpenAI image size: ${OPENAI_IMAGE_SIZE_VALUE}`);
   }
   console.log(`✅ Timezone: ${BOT_TIMEZONE}`);
   if (LLM_PROVIDER_MODE === 'ollama') {
@@ -120,7 +134,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           '**スラッシュコマンド**',
           '• `/help` : このヘルプを表示',
           '• `/status` : Botの状態確認',
-          '• `/draw` : Stable Diffusion WebUI で画像生成',
+          `• \`/draw\` : ${IMAGE_PROVIDER_MODE === 'openai' ? 'OpenAI Image API' : 'Stable Diffusion WebUI'} で画像生成`,
           '• `/music` : ComfyUI で音楽生成',
           '• `/chat <message> <image>` : LLMと会話',
           '• `/webchat <message>` : Web検索を使って最新情報つきで会話',
@@ -151,6 +165,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           `• llm max history: \`${LLM_MAX_HISTORY_MESSAGES_VALUE}\``,
           `• web search mode: \`${WEB_SEARCH_MODE_VALUE}\``,
           `• web search backend: \`${OPENAI_RESPONSES_ENABLED ? 'OpenAI web_search' : 'Ollama Web Search'}\``,
+          `• image provider: \`${IMAGE_PROVIDER_MODE}\``,
+          ...(IMAGE_PROVIDER_MODE === 'openai'
+            ? [
+                `• image model: \`${OPENAI_IMAGE_MODEL_NAME}\``,
+                `• image quality: \`${OPENAI_IMAGE_QUALITY_VALUE}\``,
+                `• image size: \`${OPENAI_IMAGE_SIZE_VALUE}\``,
+              ]
+            : []),
           `• ollama web search: \`${String(!!String(OLLAMA_WEB_API_KEY_VALUE || '').trim())}\``,
           `• history: \`${histLen}\` messages`,
           `• queue: \`${queueLen}\``,
@@ -276,19 +298,66 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const batchOpt = interaction.options.getInteger('batch');
       const negativeOpt = interaction.options.getString('negative');
 
-      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-      const finalWidth = clamp(Number.isFinite(width) ? width : numEnv(SD_DEFAULTS.width, 768), 64, 2048);
-      const finalHeight = clamp(Number.isFinite(height) ? height : numEnv(SD_DEFAULTS.height, 768), 64, 2048);
-      const finalSteps = clamp(Number.isFinite(steps) ? steps : numEnv(SD_DEFAULTS.steps, 20), 1, 150);
-      const finalCfgScale = clamp(Number.isFinite(cfgScale) ? cfgScale : numEnv(SD_DEFAULTS.cfgScale, 7), 1, 30);
-      const finalSampler = String(samplerOpt ?? SD_DEFAULTS.sampler ?? 'DPM++ 2M Karras');
-      const finalSeed = Number.isFinite(seedOpt) ? seedOpt : -1;
-      const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : numEnv(SD_DEFAULTS.batchSize, 1), 1, 4);
-      const finalNegative = String(negativeOpt ?? SD_DEFAULTS.negative ?? '');
-
       await interaction.deferReply();
 
       try {
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+        if (IMAGE_PROVIDER_MODE === 'openai') {
+          const size = resolveOpenAiImageSize({
+            width,
+            height,
+            configuredSize: OPENAI_IMAGE_SIZE_VALUE,
+          });
+          const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : 1, 1, 4);
+          const result = await generateOpenAiImages({
+            url: OPENAI_IMAGE_GENERATIONS_URL,
+            apiKey: OPENAI_IMAGE_API_KEY_VALUE,
+            model: OPENAI_IMAGE_MODEL_NAME,
+            prompt,
+            size,
+            quality: OPENAI_IMAGE_QUALITY_VALUE,
+            count: finalBatch,
+          });
+
+          if (!result.images.length) {
+            await interaction.editReply('OpenAI Image API から画像が返されませんでした。');
+            return;
+          }
+
+          const files = result.images.map((b64, idx) => {
+            const buf = Buffer.from(b64, 'base64');
+            if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
+              throw new Error(
+                `生成画像 ${idx + 1} が Discord の送信上限 ${Math.floor(DISCORD_MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB を超えました。` +
+                '画像サイズまたは品質を下げてください。',
+              );
+            }
+            return new AttachmentBuilder(buf, { name: `openai_draw_${Date.now()}_${idx + 1}.png` });
+          });
+
+          const usage = result.usage;
+          console.log(
+            `[openai-image] model=${OPENAI_IMAGE_MODEL_NAME} size=${size} quality=${OPENAI_IMAGE_QUALITY_VALUE}` +
+            ` images=${files.length} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens}` +
+            ` total_tokens=${usage.totalTokens}`,
+          );
+          const statusLine =
+            `生成完了 | provider: OpenAI | model: ${OPENAI_IMAGE_MODEL_NAME}` +
+            ` | size: ${size} | quality: ${OPENAI_IMAGE_QUALITY_VALUE} | images: ${files.length}`;
+          await interaction.editReply({ content: statusLine, files });
+          return;
+        }
+
+        const finalWidth = clamp(Number.isFinite(width) ? width : numEnv(SD_DEFAULTS.width, 768), 64, 2048);
+        const finalHeight = clamp(Number.isFinite(height) ? height : numEnv(SD_DEFAULTS.height, 768), 64, 2048);
+        const finalSteps = clamp(Number.isFinite(steps) ? steps : numEnv(SD_DEFAULTS.steps, 20), 1, 150);
+        const finalCfgScale = clamp(Number.isFinite(cfgScale) ? cfgScale : numEnv(SD_DEFAULTS.cfgScale, 7), 1, 30);
+        const finalSampler = String(samplerOpt ?? SD_DEFAULTS.sampler ?? 'DPM++ 2M Karras');
+        const finalSeed = Number.isFinite(seedOpt) ? seedOpt : -1;
+        const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : numEnv(SD_DEFAULTS.batchSize, 1), 1, 4);
+        const finalNegative = String(negativeOpt ?? SD_DEFAULTS.negative ?? '');
+
         let promptForSd = prompt;
         let translated = false;
         try {

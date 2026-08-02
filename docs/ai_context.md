@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 
-このプロジェクトは、Discord 上でローカル LLM または OpenAI API と会話できる Bot です。通常メッセージ、`/chat`、`/webchat` を処理し、画像添付、テキスト添付、Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。
+このプロジェクトは、Discord 上でローカル LLM または OpenAI API と会話できる Bot です。通常メッセージ、`/chat`、`/webchat` を処理し、画像添付、テキスト添付、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。
 
 主な技術スタック:
 - Node.js 18+
