@@ -90,4 +90,4 @@
 - UTF-8 でファイルを保存すること
 - 日本語の文字化けに注意 (特に `src/**/*.mjs`, `gui/`, `.env.example`, `README.md`)
 - GUI は起動毎にランダムな `X-GUI-Token` を発行し、`Host` / `Origin` ヘッダも検証する。改造する際は `gui/index.html` の `<meta name="gui-token">` と `gui/app.js` の `GUI_TOKEN` を維持すること
-- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 71 件) が走る。純関数を変更したら必要に応じてテストを追加する
+- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 72 件) が走る。純関数を変更したら必要に応じてテストを追加する

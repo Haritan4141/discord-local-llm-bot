@@ -2,11 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildOpenAiImagePayload,
+  formatOpenAiImageCompletion,
   generateOpenAiImages,
   parseOpenAiImageResult,
   resolveOpenAiImageSize,
   validateOpenAiImageDimensions,
 } from '../src/image/openai.mjs';
+
+test('formatOpenAiImageCompletion shows the prompt above generation details', () => {
+  assert.equal(
+    formatOpenAiImageCompletion({
+      prompt: '  ポチ  ',
+      model: 'gpt-image-2',
+      size: '1024x1024',
+      quality: 'low',
+      imageCount: 1,
+    }),
+    [
+      'prompt: ポチ',
+      '生成完了 | provider: OpenAI | model: gpt-image-2 | size: 1024x1024 | quality: low | images: 1',
+    ].join('\n'),
+  );
+});
 
 test('validateOpenAiImageDimensions follows gpt-image-2 constraints', () => {
   assert.equal(validateOpenAiImageDimensions(1024, 1024), true);

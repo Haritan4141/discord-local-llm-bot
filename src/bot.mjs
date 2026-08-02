@@ -38,7 +38,11 @@ import { getState, stateByChannel } from './discord/state.mjs';
 import { processQueue } from './discord/queue.mjs';
 import { pickImageFromInteraction } from './discord/images.mjs';
 import { translatePromptForSd, sdTxt2Img } from './sd/draw.mjs';
-import { generateOpenAiImages, resolveOpenAiImageSize } from './image/openai.mjs';
+import {
+  formatOpenAiImageCompletion,
+  generateOpenAiImages,
+  resolveOpenAiImageSize,
+} from './image/openai.mjs';
 import {
   isMusicProcessing,
   musicQueue,
@@ -342,10 +346,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
             ` images=${files.length} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens}` +
             ` total_tokens=${usage.totalTokens}`,
           );
-          const statusLine =
-            `生成完了 | provider: OpenAI | model: ${OPENAI_IMAGE_MODEL_NAME}` +
-            ` | size: ${size} | quality: ${OPENAI_IMAGE_QUALITY_VALUE} | images: ${files.length}`;
-          await interaction.editReply({ content: statusLine, files });
+          const content = formatOpenAiImageCompletion({
+            prompt,
+            model: OPENAI_IMAGE_MODEL_NAME,
+            size,
+            quality: OPENAI_IMAGE_QUALITY_VALUE,
+            imageCount: files.length,
+          });
+          await interaction.editReply({
+            content,
+            files,
+            allowedMentions: { parse: [] },
+          });
           return;
         }
 

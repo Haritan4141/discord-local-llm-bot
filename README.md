@@ -257,7 +257,7 @@ npm start
 
 ## テスト
 - `npm run check` : 全 `.mjs` ファイルの構文チェック
-- `npm test` : `npm run check` + `node --test tests/` (現在 71 件、純関数を中心に検証)
+- `npm test` : `npm run check` + `node --test tests/` (現在 72 件、純関数を中心に検証)
 
 ## `/draw` 例
 ```text

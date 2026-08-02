@@ -1,3 +1,5 @@
+import { truncateText } from '../utils/text.mjs';
+
 const DEFAULT_SIZE = '1024x1024';
 const MIN_PIXELS = 655_360;
 const MAX_PIXELS = 8_294_400;
@@ -89,6 +91,21 @@ export function parseOpenAiImageResult(json) {
       totalTokens: nonNegativeInteger(usage.total_tokens),
     },
   };
+}
+
+export function formatOpenAiImageCompletion({
+  prompt,
+  model,
+  size,
+  quality,
+  imageCount,
+  maxPromptChars = 1000,
+}) {
+  const promptText = truncateText(prompt, maxPromptChars) || '(empty)';
+  return [
+    `prompt: ${promptText}`,
+    `生成完了 | provider: OpenAI | model: ${model} | size: ${size} | quality: ${quality} | images: ${imageCount}`,
+  ].join('\n');
 }
 
 export async function generateOpenAiImages({
