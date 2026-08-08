@@ -28,6 +28,10 @@ const {
   WEB_SEARCH_MODE,
   OPENAI_WEB_SEARCH_MAX_TOOL_CALLS,
   OPENAI_WEB_SEARCH_MAX_SOURCES,
+  MEMBER_CONTEXT_ENABLED,
+  MEMBER_CONTEXT_CACHE_TTL_SECONDS,
+  MEMBER_CONTEXT_MAX_MEMBERS,
+  MEMBER_CONTEXT_MAX_CHARS,
   IMAGE_PROVIDER,
   OPENAI_IMAGE_MODEL,
   OPENAI_IMAGE_QUALITY,
@@ -75,6 +79,10 @@ const DEFAULT_LLM_MAX_HISTORY_MESSAGES = 30;
 const DEFAULT_WEB_SEARCH_MODE = 'manual';
 const DEFAULT_OPENAI_WEB_SEARCH_MAX_TOOL_CALLS = 2;
 const DEFAULT_OPENAI_WEB_SEARCH_MAX_SOURCES = 1;
+const DEFAULT_MEMBER_CONTEXT_ENABLED = true;
+const DEFAULT_MEMBER_CONTEXT_CACHE_TTL_SECONDS = 600;
+const DEFAULT_MEMBER_CONTEXT_MAX_MEMBERS = 24;
+const DEFAULT_MEMBER_CONTEXT_MAX_CHARS = 6000;
 
 export function resolveLlmTemperature(value) {
   const raw = String(value ?? '').trim();
@@ -98,6 +106,31 @@ export function resolveWebSearchMode(value) {
   const raw = String(value ?? '').trim().toLowerCase();
   if (raw === 'auto') return 'auto';
   return DEFAULT_WEB_SEARCH_MODE;
+}
+
+export function resolveMemberContextEnabled(value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return DEFAULT_MEMBER_CONTEXT_ENABLED;
+  if (['true', '1', 'yes', 'on'].includes(raw)) return true;
+  if (['false', '0', 'no', 'off'].includes(raw)) return false;
+  return DEFAULT_MEMBER_CONTEXT_ENABLED;
+}
+
+export function resolveMemberContextCacheTtlSeconds(value) {
+  return resolveIntegerInRange(
+    value,
+    DEFAULT_MEMBER_CONTEXT_CACHE_TTL_SECONDS,
+    30,
+    86_400,
+  );
+}
+
+export function resolveMemberContextMaxMembers(value) {
+  return resolveIntegerInRange(value, DEFAULT_MEMBER_CONTEXT_MAX_MEMBERS, 1, 200);
+}
+
+export function resolveMemberContextMaxChars(value) {
+  return resolveIntegerInRange(value, DEFAULT_MEMBER_CONTEXT_MAX_CHARS, 800, 30_000);
 }
 
 function resolveIntegerInRange(value, fallback, min, max) {
@@ -158,6 +191,14 @@ export const OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE =
   resolveOpenAiWebSearchMaxToolCalls(OPENAI_WEB_SEARCH_MAX_TOOL_CALLS);
 export const OPENAI_WEB_SEARCH_MAX_SOURCES_VALUE =
   resolveOpenAiWebSearchMaxSources(OPENAI_WEB_SEARCH_MAX_SOURCES);
+export const MEMBER_CONTEXT_ENABLED_VALUE = resolveMemberContextEnabled(MEMBER_CONTEXT_ENABLED);
+export const MEMBER_CONTEXT_CACHE_TTL_SECONDS_VALUE =
+  resolveMemberContextCacheTtlSeconds(MEMBER_CONTEXT_CACHE_TTL_SECONDS);
+export const MEMBER_CONTEXT_CACHE_TTL_MS_VALUE = MEMBER_CONTEXT_CACHE_TTL_SECONDS_VALUE * 1000;
+export const MEMBER_CONTEXT_MAX_MEMBERS_VALUE =
+  resolveMemberContextMaxMembers(MEMBER_CONTEXT_MAX_MEMBERS);
+export const MEMBER_CONTEXT_MAX_CHARS_VALUE =
+  resolveMemberContextMaxChars(MEMBER_CONTEXT_MAX_CHARS);
 export const BOT_TIMEZONE = resolveBotTimezone(BOT_TIMEZONE_ENV, {
   logger: raw => console.warn(`[config] invalid BOT_TIMEZONE=${JSON.stringify(raw)}, falling back to Asia/Tokyo`),
 });

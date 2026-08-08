@@ -8,6 +8,10 @@ import {
   resolveOpenAiImageQuality,
   resolveOpenAiWebSearchMaxSources,
   resolveOpenAiWebSearchMaxToolCalls,
+  resolveMemberContextCacheTtlSeconds,
+  resolveMemberContextEnabled,
+  resolveMemberContextMaxChars,
+  resolveMemberContextMaxMembers,
   resolveWebSearchMode,
 } from '../src/config.mjs';
 
@@ -60,6 +64,23 @@ test('resolveWebSearchMode only accepts auto', () => {
   assert.equal(resolveWebSearchMode('off'), 'manual');
   assert.equal(resolveWebSearchMode('AUTO'), 'auto');
   assert.equal(resolveWebSearchMode('auto'), 'auto');
+});
+
+test('member context settings validate and use safe defaults', () => {
+  assert.equal(resolveMemberContextEnabled(undefined), true);
+  assert.equal(resolveMemberContextEnabled('false'), false);
+  assert.equal(resolveMemberContextEnabled('on'), true);
+  assert.equal(resolveMemberContextEnabled('unknown'), true);
+
+  assert.equal(resolveMemberContextCacheTtlSeconds(undefined), 600);
+  assert.equal(resolveMemberContextCacheTtlSeconds('30'), 30);
+  assert.equal(resolveMemberContextCacheTtlSeconds('86401'), 600);
+  assert.equal(resolveMemberContextMaxMembers(undefined), 24);
+  assert.equal(resolveMemberContextMaxMembers('200'), 200);
+  assert.equal(resolveMemberContextMaxMembers('0'), 24);
+  assert.equal(resolveMemberContextMaxChars(undefined), 6000);
+  assert.equal(resolveMemberContextMaxChars('30000'), 30000);
+  assert.equal(resolveMemberContextMaxChars('799'), 6000);
 });
 
 test('resolveOpenAiWebSearchMaxToolCalls accepts 1 to 10 and defaults to 2', () => {

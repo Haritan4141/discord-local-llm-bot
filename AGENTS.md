@@ -41,6 +41,7 @@
 - `src/discord/text-attachments.mjs` : テキスト添付の判定と本文取得
 - `src/discord/typing.mjs` : "入力中..." 定期送信
 - `src/discord/queue.mjs` : `processQueue` (画像 / 通常 / web 検索の分岐含む)
+- `src/discord/members.mjs` : Discord メンバーキャッシュ、名前・メンション判定、LLM 用一時コンテキスト
 - `src/standby/config.mjs` / `src/standby/bot.mjs` : 同じ Bot を使う Standby モードの設定と本体
 - `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
 - `src/image/openai.mjs` : OpenAI Image API の画像生成、サイズ検証、レスポンス解析
@@ -67,6 +68,7 @@
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
 - Optional: chat temperature (`LLM_TEMPERATURE`, 0.0-2.0, default `0.4`)
 - Optional: web search mode (`WEB_SEARCH_MODE`, `manual` or `auto`)
+- Optional: Discord member context (`MEMBER_CONTEXT_ENABLED`, cache TTL / max members / max chars)
 - Optional: chat timezone (`BOT_TIMEZONE`, IANA name, default `Asia/Tokyo`)
 - Optional: Ollama model keep-alive (`OLLAMA_KEEP_ALIVE`, 例: `30m`, `1h`, `-1`)
 - Optional: Ollama Web Search API key (`OLLAMA_WEB_API_KEY`)
@@ -79,6 +81,7 @@
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う
 - `LLM_TEMPERATURE` は通常チャット系の応答安定性に効く。低めほど暴走しにくい
+- `MEMBER_CONTEXT_ENABLED` が有効な場合、`GuildMembers` / `GuildPresences` Intent を Developer Portal と Bot の両方で有効化する
 - `OLLAMA_KEEP_ALIVE` は Ollama 利用時のみ有効。`-1` は常時ロードだが VRAM / RAM を占有し続ける
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
 - Discord で長文が `message.txt` 添付になった場合でも、通常メッセージなら最初のテキスト添付 1 件を自動で読む

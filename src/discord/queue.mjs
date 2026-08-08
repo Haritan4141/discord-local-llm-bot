@@ -21,6 +21,7 @@ import {
   pickFirstTextAttachment,
 } from './text-attachments.mjs';
 import { getState, trimHistory } from './state.mjs';
+import { memberDirectory } from './members.mjs';
 import { startTypingLoop } from './typing.mjs';
 import { splitForDiscord, stripInvisibleCharacters } from '../utils/text.mjs';
 import {
@@ -143,6 +144,24 @@ export async function processQueue(channelId) {
       let userMessagePushed = false;
       let textAttachment = null;
 
+      let memberContext = null;
+      try {
+        const guild = item.kind === 'interaction'
+          ? item.interaction?.guild
+          : item.msg?.guild;
+        memberContext = await memberDirectory.getContextForMessage({ guild, text });
+        if (memberContext) {
+          console.log(
+            `[members] context guild=${memberContext.guildId} matched=${memberContext.matchedCount} selected=${memberContext.selectedCount} total=${memberContext.totalCount} active=${memberContext.activeCount}`,
+          );
+        }
+      } catch (error) {
+        console.warn(`[members] context lookup failed: ${error?.message || error}`);
+      }
+      const memberContextOptions = memberContext?.prompt
+        ? { extraSystemContents: [memberContext.prompt] }
+        : {};
+
       try {
         if (!text.trim() && !imageAtt && !textAtt) {
           await api.replyFirst('テキスト、画像、またはテキストファイルを送ってください。');
@@ -206,7 +225,10 @@ export async function processQueue(channelId) {
             visionUserMessage,
           ];
 
-          replyResult = await localLlmChat(messagesToSend, normalChatOptions);
+          replyResult = await localLlmChat(messagesToSend, {
+            ...normalChatOptions,
+            ...memberContextOptions,
+          });
         } else if (OPENAI_RESPONSES_ENABLED) {
           if (textAttachment) {
             messagesToSend = [
@@ -228,6 +250,7 @@ export async function processQueue(channelId) {
           });
           replyResult = await localLlmChat(messagesToSend, {
             ...normalChatOptions,
+            ...memberContextOptions,
             webSearch: openAiWebSearch,
           });
           sourceUrls = Array.isArray(replyResult?.sources) ? replyResult.sources : [];
@@ -249,6 +272,7 @@ export async function processQueue(channelId) {
           );
           replyResult = await localLlmChat(messagesToSend, {
             ...normalChatOptions,
+            ...memberContextOptions,
             temperature: LLM_TEMPERATURE_VALUE,
           });
         } else {
@@ -265,7 +289,10 @@ export async function processQueue(channelId) {
               },
             ];
           }
-          replyResult = await localLlmChat(messagesToSend, normalChatOptions);
+          replyResult = await localLlmChat(messagesToSend, {
+            ...normalChatOptions,
+            ...memberContextOptions,
+          });
         }
 
         const normalizedReplyText = stripInvisibleCharacters(replyResult?.text || '').trim();

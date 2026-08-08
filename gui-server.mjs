@@ -64,6 +64,10 @@ const ENV_SECTIONS = [
       { key: 'LLM_MODEL', label: 'Model', type: 'model', required: true, placeholder: '使う model identifier を指定してください。' },
       { key: 'LLM_TEMPERATURE', label: 'LLM Temperature', type: 'number', placeholder: '0.4', min: 0, max: 2, step: 0.1, help: '通常チャットの temperature です。低いほど安定します。既定値は 0.4 です。' },
       { key: 'LLM_MAX_HISTORY_MESSAGES', label: 'Max History Messages', type: 'number', placeholder: '30', min: 0, step: 1, help: 'チャンネルごとの履歴として保持する最大メッセージ数です。system は別管理です。' },
+      { key: 'MEMBER_CONTEXT_ENABLED', label: 'Member Context Enabled', type: 'select', options: ['true', 'false'], placeholder: 'true', help: '通常チャットで Discord メンバー情報を自動取得して LLM に渡します。' },
+      { key: 'MEMBER_CONTEXT_CACHE_TTL_SECONDS', label: 'Member Cache TTL (sec)', type: 'number', placeholder: '600', min: 30, max: 86400, step: 1, help: 'メンバーキャッシュを再取得する間隔です。参加・退出などのイベントでは即時更新します。' },
+      { key: 'MEMBER_CONTEXT_MAX_MEMBERS', label: 'Member Context Max Members', type: 'number', placeholder: '24', min: 1, max: 200, step: 1, help: '1回のLLMプロンプトに含めるメンバー情報の最大件数です。' },
+      { key: 'MEMBER_CONTEXT_MAX_CHARS', label: 'Member Context Max Chars', type: 'number', placeholder: '6000', min: 800, max: 30000, step: 100, help: '1回のLLMプロンプトに含めるメンバー情報の最大文字数です。' },
       { key: 'WEB_SEARCH_MODE', label: 'Web Search Mode', type: 'select', options: ['manual', 'auto'], placeholder: 'manual', help: 'manual は /webchat のみ検索、auto は通常チャットでも検索を許可します。OpenAI ではモデル自身が検索要否を判断します。' },
       { key: 'OPENAI_WEB_SEARCH_MAX_TOOL_CALLS', label: 'OpenAI Web Max Tool Calls', type: 'number', placeholder: '2', min: 1, max: 10, step: 1, help: 'OpenAI Responses の内蔵 Web ツールを 1 回の回答で呼べる上限です。検索・ページを開く・ページ内検索の合計で、既定値は 2 です。' },
       { key: 'OPENAI_WEB_SEARCH_MAX_SOURCES', label: 'OpenAI Sources Display Limit', type: 'number', placeholder: '1', min: 0, max: 10, step: 1, help: 'Discord の回答末尾に表示する Sources URL の最大件数です。0 で非表示、既定値は 1 です。' },
@@ -164,6 +168,10 @@ function buildGuiValues(values) {
   if (!next.LLM_MODEL && next.OLLAMA_MODEL) next.LLM_MODEL = next.OLLAMA_MODEL;
   if (!next.LLM_TEMPERATURE) next.LLM_TEMPERATURE = '0.4';
   if (!next.LLM_MAX_HISTORY_MESSAGES) next.LLM_MAX_HISTORY_MESSAGES = '30';
+  if (!next.MEMBER_CONTEXT_ENABLED) next.MEMBER_CONTEXT_ENABLED = 'true';
+  if (!next.MEMBER_CONTEXT_CACHE_TTL_SECONDS) next.MEMBER_CONTEXT_CACHE_TTL_SECONDS = '600';
+  if (!next.MEMBER_CONTEXT_MAX_MEMBERS) next.MEMBER_CONTEXT_MAX_MEMBERS = '24';
+  if (!next.MEMBER_CONTEXT_MAX_CHARS) next.MEMBER_CONTEXT_MAX_CHARS = '6000';
   if (!next.WEB_SEARCH_MODE) next.WEB_SEARCH_MODE = 'manual';
   if (!next.OPENAI_WEB_SEARCH_MAX_TOOL_CALLS) next.OPENAI_WEB_SEARCH_MAX_TOOL_CALLS = '2';
   if (next.OPENAI_WEB_SEARCH_MAX_SOURCES == null || next.OPENAI_WEB_SEARCH_MAX_SOURCES === '') {

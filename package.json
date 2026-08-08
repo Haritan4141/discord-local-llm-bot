@@ -25,7 +25,7 @@
     "clear:guild": "node clear-guild-commands.mjs",
     "clear:global": "node clear-global-commands.mjs",
     "check": "node --check index.mjs && node --check standby-bot.mjs && node --check gui-server.mjs && node --check register-commands.mjs && node --check clear-guild-commands.mjs && node --check clear-global-commands.mjs",
-    "test": "npm run check && node --test tests/"
+    "test": "npm run check && node --test"
   },
   "keywords": [
     "discord",

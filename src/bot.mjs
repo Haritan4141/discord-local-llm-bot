@@ -27,6 +27,10 @@ import {
   OPENAI_IMAGE_MODEL_NAME,
   OPENAI_IMAGE_QUALITY_VALUE,
   OPENAI_IMAGE_SIZE_VALUE,
+  MEMBER_CONTEXT_CACHE_TTL_SECONDS_VALUE,
+  MEMBER_CONTEXT_ENABLED_VALUE,
+  MEMBER_CONTEXT_MAX_CHARS_VALUE,
+  MEMBER_CONTEXT_MAX_MEMBERS_VALUE,
   WEB_SEARCH_MODE_VALUE,
   allowedChannelIds,
   assertRuntimeConfig,
@@ -36,6 +40,7 @@ import {
 import { preloadOllamaModel } from './llm/chat.mjs';
 import { getState, stateByChannel } from './discord/state.mjs';
 import { processQueue } from './discord/queue.mjs';
+import { memberDirectory } from './discord/members.mjs';
 import { pickImageFromInteraction } from './discord/images.mjs';
 import { translatePromptForSd, sdTxt2Img } from './sd/draw.mjs';
 import {
@@ -63,6 +68,8 @@ assertRuntimeConfig();
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
@@ -73,7 +80,7 @@ const client = new Client({
 const SYSTEM_PROMPT_OVERRIDE_MARKER = '--- system prompt override ---';
 const LEGACY_PERSONA_OVERRIDE_MARKER = '--- persona override ---';
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, (readyClient) => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   console.log(`✅ Allowed channels: ${[...allowedChannelIds].join(', ')}`);
   console.log(`✅ LLM provider: ${LLM_PROVIDER_MODE}`);
@@ -82,6 +89,17 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ LLM temperature: ${LLM_TEMPERATURE_VALUE}`);
   console.log(`✅ LLM max history messages: ${LLM_MAX_HISTORY_MESSAGES_VALUE}`);
   console.log(`✅ Web search mode: ${WEB_SEARCH_MODE_VALUE}`);
+  console.log(`✅ Member context enabled: ${MEMBER_CONTEXT_ENABLED_VALUE}`);
+  if (MEMBER_CONTEXT_ENABLED_VALUE) {
+    console.log(`✅ Member cache TTL: ${MEMBER_CONTEXT_CACHE_TTL_SECONDS_VALUE}s`);
+    console.log(`✅ Member context max members: ${MEMBER_CONTEXT_MAX_MEMBERS_VALUE}`);
+    console.log(`✅ Member context max chars: ${MEMBER_CONTEXT_MAX_CHARS_VALUE}`);
+    void memberDirectory.warmGuilds(readyClient, allowedChannelIds).then(summary => {
+      console.log(`[members] warmed guilds=${summary.guildCount} members=${summary.memberCount}`);
+    }).catch(error => {
+      console.warn(`[members] warmup failed: ${error?.message || error}`);
+    });
+  }
   console.log(`✅ LLM API mode: ${OPENAI_RESPONSES_ENABLED ? 'OpenAI Responses' : 'Chat Completions'}`);
   if (OPENAI_RESPONSES_ENABLED) {
     console.log(`✅ OpenAI web max tool calls: ${OPENAI_WEB_SEARCH_MAX_TOOL_CALLS_VALUE}`);
@@ -99,6 +117,22 @@ client.once(Events.ClientReady, () => {
     console.log(`✅ Ollama keep alive: ${keepAliveText}`);
     void preloadOllamaModel();
   }
+});
+
+client.on(Events.GuildMemberAdd, member => {
+  memberDirectory.upsertMember(member);
+});
+
+client.on(Events.GuildMemberRemove, member => {
+  memberDirectory.removeMember(member);
+});
+
+client.on(Events.GuildMemberUpdate, (_oldMember, member) => {
+  memberDirectory.upsertMember(member);
+});
+
+client.on(Events.PresenceUpdate, (_oldPresence, presence) => {
+  memberDirectory.updatePresence(presence);
 });
 
 client.on(Events.MessageCreate, (msg) => {
@@ -168,6 +202,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           `• llm temperature: \`${LLM_TEMPERATURE_VALUE}\``,
           `• llm max history: \`${LLM_MAX_HISTORY_MESSAGES_VALUE}\``,
           `• web search mode: \`${WEB_SEARCH_MODE_VALUE}\``,
+          `• member context: \`${MEMBER_CONTEXT_ENABLED_VALUE}\``,
+          ...(MEMBER_CONTEXT_ENABLED_VALUE
+            ? [
+                `• member cache ttl: \`${MEMBER_CONTEXT_CACHE_TTL_SECONDS_VALUE}s\``,
+                `• member context max members: \`${MEMBER_CONTEXT_MAX_MEMBERS_VALUE}\``,
+                `• member context max chars: \`${MEMBER_CONTEXT_MAX_CHARS_VALUE}\``,
+              ]
+            : []),
           `• web search backend: \`${OPENAI_RESPONSES_ENABLED ? 'OpenAI web_search' : 'Ollama Web Search'}\``,
           `• image provider: \`${IMAGE_PROVIDER_MODE}\``,
           ...(IMAGE_PROVIDER_MODE === 'openai'

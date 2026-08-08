@@ -52,6 +52,10 @@ start-gui.bat
 - `LLM_MODEL` (例: `gemma3:12b`)
 - `LLM_TEMPERATURE` (通常チャットの temperature。既定値 `0.4`)
 - `LLM_MAX_HISTORY_MESSAGES` (保持する会話履歴メッセージ数。既定値 `30`)
+- `MEMBER_CONTEXT_ENABLED` (通常チャットでメンバー情報を自動参照するか。既定値 `true`)
+- `MEMBER_CONTEXT_CACHE_TTL_SECONDS` (メンバーキャッシュの再取得間隔。既定値 `600`)
+- `MEMBER_CONTEXT_MAX_MEMBERS` (1回のLLMプロンプトに含める最大メンバー件数。既定値 `24`)
+- `MEMBER_CONTEXT_MAX_CHARS` (1回のLLMプロンプトに含める最大文字数。既定値 `6000`)
 - `WEB_SEARCH_MODE` (`manual` = `/webchat` のときだけ検索, `auto` = 通常チャットでも毎ターン検索要否を判定)
 - `OPENAI_WEB_SEARCH_MAX_TOOL_CALLS` (OpenAI の 1 回の回答で使える内蔵 Web ツール呼び出し上限。既定値 `2`)
 - `OPENAI_WEB_SEARCH_MAX_SOURCES` (Discord に表示する OpenAI Sources URL の上限。既定値 `1`、`0` で非表示。リンクプレビューは抑制)
@@ -130,6 +134,13 @@ Bot Permissions は最低限、次を付けてください。
 - `Send Messages in Threads`
 
 Developer Portal の `Bot` タブでは、通常メッセージを読むために `Message Content Intent` を ON にしてください。
+
+メンバー情報を通常チャットへ取り込む場合は、同じ `Bot` タブで次も ON にしてください。
+
+- `Server Members Intent`
+- `Presence Intent` (オンライン状態も参照する場合)
+
+Bot側でも `GuildMembers` / `GuildPresences` Intent を指定して接続します。`MEMBER_CONTEXT_ENABLED=true` の場合、起動時に許可チャンネルを含むサーバーのメンバーキャッシュを作成し、通常メッセージ中のメンション・ユーザー名・メンバー話題に一致した情報だけを一時的にLLMへ渡します。メンバー情報は会話履歴には保存しません。全員の一覧を毎回送らないため、入力トークンの増加も抑えます。
 
 ### `GUILD_ID` と複数サーバーの関係
 
