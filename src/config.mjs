@@ -63,7 +63,32 @@ const {
 
 export const DISCORD_TOKEN_VALUE = DISCORD_TOKEN;
 export const OLLAMA_WEB_API_KEY_VALUE = OLLAMA_WEB_API_KEY;
-export const SYSTEM_PROMPT_VALUE = SYSTEM_PROMPT;
+
+export const DISCORD_RESPONSE_FORMAT_MARKER = '[Discord response format policy]';
+export const DISCORD_RESPONSE_FORMAT_POLICY = [
+  DISCORD_RESPONSE_FORMAT_MARKER,
+  '最新のDiscordメッセージに対して、自然な日本語で直接答えてください。',
+  '返答の先頭に発言者名・ユーザー名・表示名を付けないでください。',
+  '「名前: 内容」「○○:『内容』」の形式で、ユーザーの発言を復唱・要約しないでください。',
+  '会話ログや台本の形式ではなく、回答本文だけを返してください。',
+  'メンバー名は回答に必要な場合だけ、自然な文章の中で使用してください。',
+].join('\n');
+
+export const DEFAULT_SYSTEM_PROMPT = [
+  'あなたはDiscordチャンネルの会話に自然に参加するAIです。',
+  '日本語で、短めに、空気を読んで、最新の発言に直接返答してください。',
+  '',
+  DISCORD_RESPONSE_FORMAT_POLICY,
+].join('\n');
+
+export function resolveSystemPrompt(value) {
+  const configured = String(value ?? '').trim();
+  if (!configured) return DEFAULT_SYSTEM_PROMPT;
+  if (configured.includes(DISCORD_RESPONSE_FORMAT_MARKER)) return configured;
+  return `${configured}\n\n${DISCORD_RESPONSE_FORMAT_POLICY}`;
+}
+
+export const SYSTEM_PROMPT_VALUE = resolveSystemPrompt(SYSTEM_PROMPT);
 
 export const allowedChannelIds = new Set(
   (CHANNEL_IDS || '').split(',').map(s => s.trim()).filter(Boolean)

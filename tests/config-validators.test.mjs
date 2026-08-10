@@ -13,6 +13,10 @@ import {
   resolveMemberContextMaxChars,
   resolveMemberContextMaxMembers,
   resolveWebSearchMode,
+  DEFAULT_SYSTEM_PROMPT,
+  DISCORD_RESPONSE_FORMAT_MARKER,
+  DISCORD_RESPONSE_FORMAT_POLICY,
+  resolveSystemPrompt,
 } from '../src/config.mjs';
 
 test('resolveImageProvider accepts explicit providers and follows the OpenAI LLM default', () => {
@@ -103,6 +107,22 @@ test('resolveOpenAiWebSearchMaxSources accepts 0 to 10 and defaults to 1', () =>
   assert.equal(resolveOpenAiWebSearchMaxSources('0'), 0);
   assert.equal(resolveOpenAiWebSearchMaxSources('1'), 1);
   assert.equal(resolveOpenAiWebSearchMaxSources('10'), 10);
+});
+
+test('system prompt defaults and configured prompts include Discord response rules', () => {
+  assert.equal(resolveSystemPrompt(''), DEFAULT_SYSTEM_PROMPT);
+  assert.match(DEFAULT_SYSTEM_PROMPT, /発言者名・ユーザー名・表示名を付けない/);
+  assert.match(DEFAULT_SYSTEM_PROMPT, /名前: 内容/);
+
+  const configured = resolveSystemPrompt('既存の人格設定');
+  assert.match(configured, /^既存の人格設定/);
+  assert.match(configured, new RegExp(DISCORD_RESPONSE_FORMAT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(configured, new RegExp(DISCORD_RESPONSE_FORMAT_POLICY.split('\n')[1]));
+
+  assert.equal(
+    resolveSystemPrompt(`${DISCORD_RESPONSE_FORMAT_POLICY}\n追加設定`),
+    `${DISCORD_RESPONSE_FORMAT_POLICY}\n追加設定`,
+  );
 });
 
 test('resolveBotTimezone validates IANA names and falls back', () => {

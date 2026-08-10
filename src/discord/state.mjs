@@ -22,9 +22,7 @@ export function getState(channelId) {
       history: [
         {
           role: 'system',
-          content:
-            SYSTEM_PROMPT_VALUE ||
-            'You are a helpful assistant. Reply in Japanese, concise, and only when needed.',
+          content: SYSTEM_PROMPT_VALUE,
         },
       ],
       queue: [],

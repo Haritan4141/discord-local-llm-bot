@@ -31,6 +31,7 @@ import {
   MEMBER_CONTEXT_ENABLED_VALUE,
   MEMBER_CONTEXT_MAX_CHARS_VALUE,
   MEMBER_CONTEXT_MAX_MEMBERS_VALUE,
+  SYSTEM_PROMPT_VALUE,
   WEB_SEARCH_MODE_VALUE,
   allowedChannelIds,
   assertRuntimeConfig,
@@ -249,7 +250,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.commandName === 'systemprompt') {
       const reset = !!interaction.options.getBoolean('reset');
       const text = (interaction.options.getString('text') || '').trim();
-      const base = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
+      const base = SYSTEM_PROMPT_VALUE;
 
       if (reset || text.toLowerCase() === 'reset') {
         if (st.history?.[0]?.role === 'system') {
@@ -293,7 +294,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.commandName === 'systemprompt-show') {
-      const base = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
+      const base = SYSTEM_PROMPT_VALUE;
       let current = base;
       if (st.history?.[0]?.role === 'system') {
         current = st.history[0].content || base;

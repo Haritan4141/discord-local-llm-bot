@@ -5,6 +5,7 @@ import {
   stateByChannel,
   trimHistory,
 } from '../src/discord/state.mjs';
+import { SYSTEM_PROMPT_VALUE } from '../src/config.mjs';
 
 function resetState() {
   stateByChannel.clear();
@@ -15,6 +16,7 @@ test('getState seeds a system prompt and empty queue', () => {
   const st = getState('channel-1');
   assert.equal(st.history.length, 1);
   assert.equal(st.history[0].role, 'system');
+  assert.equal(st.history[0].content, SYSTEM_PROMPT_VALUE);
   assert.deepEqual(st.queue, []);
   assert.equal(st.paused, false);
   assert.equal(st.processing, false);
