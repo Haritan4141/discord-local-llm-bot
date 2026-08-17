@@ -118,6 +118,7 @@ const ENV_SECTIONS = [
       { key: 'MUSIC_BACKEND', label: 'Backend', type: 'select', options: ['comfyui', 'ace'], placeholder: 'comfyui' },
       { key: 'COMFY_URL', label: 'ComfyUI URL', type: 'url', placeholder: 'http://127.0.0.1:8188' },
       { key: 'COMFY_WORKFLOW_PATH', label: 'ComfyUI Workflow Path', type: 'text', placeholder: './comfyui/workflows/audio_ace_step_1_5_checkpoint_api.json' },
+      { key: 'MUSIC_VRAM_RELEASE_DELAY_SECONDS', label: 'VRAM Release Delay (seconds)', type: 'number', placeholder: '300', help: 'ComfyUIの音楽キューが空になってからモデルを解放するまでの時間です。300=5分、0=無効。' },
       { key: 'ACE_URL', label: 'ACE-Step API URL', type: 'url', placeholder: 'http://127.0.0.1:8001' },
       { key: 'ACE_POLL_MS', label: 'ACE-Step Poll Interval (ms)', type: 'number', placeholder: '2000' },
       { key: 'ACE_API_KEY', label: 'ACE-Step API Key', type: 'password', placeholder: '必要な場合のみ指定します。' },

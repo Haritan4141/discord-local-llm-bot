@@ -102,6 +102,7 @@ OPENAI_IMAGE_SIZE=1024x1024
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)
 - `COMFY_URL` と `COMFY_WORKFLOW_PATH` (`/music` の ComfyUI 用)
+- `MUSIC_VRAM_RELEASE_DELAY_SECONDS` (ComfyUIの音楽キューが空になってからVRAMを解放するまでの秒数。既定値300、0で無効)
 - `ACE_URL` / `ACE_POLL_MS` / `ACE_API_KEY` (`/music` の ACE-Step 用)
 
 旧 `.env` の `OLLAMA_URL` / `OLLAMA_MODEL` は fallback として残せます。新しい `LLM_*` が設定されている場合は `LLM_*` が優先されます。
@@ -316,7 +317,7 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 /music prompt:"j-pop vocal, pop rock" duration:120 lyrics:"test" bpm:120 language:ja
 ```
 
-`MUSIC_BACKEND=comfyui` がデフォルトです。ComfyUI を使う場合は `COMFY_URL` と、必要に応じて `COMFY_WORKFLOW_PATH` を設定します。ACE-Step API を使う場合は `MUSIC_BACKEND=ace` と `ACE_URL` を設定します。
+`MUSIC_BACKEND=comfyui` がデフォルトです。ComfyUI を使う場合は `COMFY_URL` と、必要に応じて `COMFY_WORKFLOW_PATH` を設定します。音楽キューが空になってから `MUSIC_VRAM_RELEASE_DELAY_SECONDS` 秒経過すると、Bot は ComfyUI の `/free` API に `unload_models=true` と `free_memory=true` を送り、読み込まれたモデルを解放します。既定値は300秒（5分）で、0にすると無効です。解放後の次回生成ではモデルの再ロードが発生するため、初回だけ時間がかかる場合があります。ACE-Step API を使う場合は `MUSIC_BACKEND=ace` と `ACE_URL` を設定します。
 
 生成されたファイルサイズが 24MB を超えると Discord にアップロードできないため、Bot 側で検知して案内メッセージだけを返します。長尺は `duration` を短くするか、低 bitrate の出力に切り替えてください。
 

@@ -12,6 +12,7 @@ import {
   resolveMemberContextEnabled,
   resolveMemberContextMaxChars,
   resolveMemberContextMaxMembers,
+  resolveMusicVramReleaseDelaySeconds,
   resolveWebSearchMode,
   DEFAULT_SYSTEM_PROMPT,
   DISCORD_RESPONSE_FORMAT_MARKER,
@@ -85,6 +86,17 @@ test('member context settings validate and use safe defaults', () => {
   assert.equal(resolveMemberContextMaxChars(undefined), 6000);
   assert.equal(resolveMemberContextMaxChars('30000'), 30000);
   assert.equal(resolveMemberContextMaxChars('799'), 6000);
+});
+
+test('music VRAM release delay accepts 0 to disable and uses a safe default', () => {
+  assert.equal(resolveMusicVramReleaseDelaySeconds(undefined), 300);
+  assert.equal(resolveMusicVramReleaseDelaySeconds(''), 300);
+  assert.equal(resolveMusicVramReleaseDelaySeconds('0'), 0);
+  assert.equal(resolveMusicVramReleaseDelaySeconds('300'), 300);
+  assert.equal(resolveMusicVramReleaseDelaySeconds('86400'), 86400);
+  assert.equal(resolveMusicVramReleaseDelaySeconds('-1'), 300);
+  assert.equal(resolveMusicVramReleaseDelaySeconds('86401'), 300);
+  assert.equal(resolveMusicVramReleaseDelaySeconds('1.5'), 300);
 });
 
 test('resolveOpenAiWebSearchMaxToolCalls accepts 1 to 10 and defaults to 2', () => {

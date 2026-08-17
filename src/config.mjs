@@ -57,6 +57,7 @@ const {
   ACE_API_KEY,
   COMFY_URL,
   COMFY_WORKFLOW_PATH,
+  MUSIC_VRAM_RELEASE_DELAY_SECONDS,
   MUSIC_BACKEND,
   BOT_TIMEZONE: BOT_TIMEZONE_ENV,
 } = process.env;
@@ -108,6 +109,7 @@ const DEFAULT_MEMBER_CONTEXT_ENABLED = true;
 const DEFAULT_MEMBER_CONTEXT_CACHE_TTL_SECONDS = 600;
 const DEFAULT_MEMBER_CONTEXT_MAX_MEMBERS = 24;
 const DEFAULT_MEMBER_CONTEXT_MAX_CHARS = 6000;
+const DEFAULT_MUSIC_VRAM_RELEASE_DELAY_SECONDS = 300;
 
 export function resolveLlmTemperature(value) {
   const raw = String(value ?? '').trim();
@@ -156,6 +158,10 @@ export function resolveMemberContextMaxMembers(value) {
 
 export function resolveMemberContextMaxChars(value) {
   return resolveIntegerInRange(value, DEFAULT_MEMBER_CONTEXT_MAX_CHARS, 800, 30_000);
+}
+
+export function resolveMusicVramReleaseDelaySeconds(value) {
+  return resolveIntegerInRange(value, DEFAULT_MUSIC_VRAM_RELEASE_DELAY_SECONDS, 0, 86_400);
 }
 
 function resolveIntegerInRange(value, fallback, min, max) {
@@ -224,6 +230,8 @@ export const MEMBER_CONTEXT_MAX_MEMBERS_VALUE =
   resolveMemberContextMaxMembers(MEMBER_CONTEXT_MAX_MEMBERS);
 export const MEMBER_CONTEXT_MAX_CHARS_VALUE =
   resolveMemberContextMaxChars(MEMBER_CONTEXT_MAX_CHARS);
+export const MUSIC_VRAM_RELEASE_DELAY_SECONDS_VALUE =
+  resolveMusicVramReleaseDelaySeconds(MUSIC_VRAM_RELEASE_DELAY_SECONDS);
 export const BOT_TIMEZONE = resolveBotTimezone(BOT_TIMEZONE_ENV, {
   logger: raw => console.warn(`[config] invalid BOT_TIMEZONE=${JSON.stringify(raw)}, falling back to Asia/Tokyo`),
 });

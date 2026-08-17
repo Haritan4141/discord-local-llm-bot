@@ -204,6 +204,22 @@ export async function comfyFetchAudio(file) {
   return { buf, filename: file.filename };
 }
 
+export async function comfyFreeMemory() {
+  const res = await fetch(`${COMFY_BASE_URL}/free`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      unload_models: true,
+      free_memory: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`ComfyUI free memory error: ${res.status} ${res.statusText}\n${text}`);
+  }
+}
+
 export async function handleMusicJobComfy(job) {
   const { interaction, prompt, durationSec } = job;
   const pollMs = Math.max(500, numEnv(ACE_POLL_MS_VALUE, 2000));

@@ -1,12 +1,54 @@
-import { MUSIC_BACKEND_MODE } from '../config.mjs';
+import {
+  MUSIC_BACKEND_MODE,
+  MUSIC_VRAM_RELEASE_DELAY_SECONDS_VALUE,
+} from '../config.mjs';
 import { handleMusicJobAce } from './ace.mjs';
-import { handleMusicJobComfy } from './comfy.mjs';
+import { comfyFreeMemory, handleMusicJobComfy } from './comfy.mjs';
 
 export const musicQueue = [];
 let musicProcessing = false;
+let comfyVramReleaseTimer = null;
 
 export function isMusicProcessing() {
   return musicProcessing;
+}
+
+export function cancelScheduledMusicVramRelease() {
+  if (comfyVramReleaseTimer === null) return;
+  clearTimeout(comfyVramReleaseTimer);
+  comfyVramReleaseTimer = null;
+}
+
+export function scheduleMusicVramRelease() {
+  cancelScheduledMusicVramRelease();
+
+  if (MUSIC_BACKEND_MODE !== 'comfyui' || MUSIC_VRAM_RELEASE_DELAY_SECONDS_VALUE <= 0) {
+    return;
+  }
+
+  const delayMs = MUSIC_VRAM_RELEASE_DELAY_SECONDS_VALUE * 1000;
+  comfyVramReleaseTimer = setTimeout(async () => {
+    comfyVramReleaseTimer = null;
+
+    // A new job may have been queued while the timer was waiting. Never ask
+    // ComfyUI to unload models while the music queue is active.
+    if (musicProcessing || musicQueue.length > 0) {
+      scheduleMusicVramRelease();
+      return;
+    }
+
+    try {
+      await comfyFreeMemory();
+      console.info(
+        `[music] ComfyUI VRAM release requested after ${MUSIC_VRAM_RELEASE_DELAY_SECONDS_VALUE}s idle.`,
+      );
+    } catch (e) {
+      console.warn(`[music] ComfyUI VRAM release failed: ${e?.message || String(e)}`);
+    }
+  }, delayMs);
+
+  // The timer should not keep a graceful bot shutdown alive by itself.
+  comfyVramReleaseTimer.unref?.();
 }
 
 export async function handleMusicJob(job) {
@@ -18,6 +60,7 @@ export async function handleMusicJob(job) {
 
 export async function processMusicQueue() {
   if (musicProcessing) return;
+  cancelScheduledMusicVramRelease();
   musicProcessing = true;
   try {
     while (musicQueue.length > 0) {
@@ -32,5 +75,6 @@ export async function processMusicQueue() {
     }
   } finally {
     musicProcessing = false;
+    if (musicQueue.length === 0) scheduleMusicVramRelease();
   }
 }
