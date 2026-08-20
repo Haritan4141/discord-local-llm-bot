@@ -54,6 +54,7 @@ import {
   musicQueue,
   processMusicQueue,
 } from './music/queue.mjs';
+import { formatMusicQueuedMessage } from './music/messages.mjs';
 import {
   REACTION_DIGITS,
   getOthelloGame,
@@ -483,7 +484,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (isMusicProcessing() || position > 1) {
         try {
-          await interaction.editReply(`music: queued (position ${position}).`);
+          await interaction.editReply(formatMusicQueuedMessage(position));
         } catch {}
       }
 

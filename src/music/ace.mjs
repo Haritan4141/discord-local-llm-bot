@@ -8,6 +8,10 @@ import {
 } from '../config.mjs';
 import { sleep } from '../utils/http.mjs';
 import { truncateText } from '../utils/text.mjs';
+import {
+  formatMusicGeneratingMessage,
+  formatMusicQueuedMessage,
+} from './messages.mjs';
 
 function aceHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -109,7 +113,7 @@ export async function handleMusicJobAce(job) {
   const timeoutMs = 20 * 60 * 1000;
 
   try {
-    await interaction.editReply(`music: generating... (${durationSec}s)`);
+    await interaction.editReply(formatMusicGeneratingMessage(durationSec));
   } catch {}
 
   const { taskId, queuePosition } = await aceReleaseTask({
@@ -123,7 +127,7 @@ export async function handleMusicJobAce(job) {
 
   if (queuePosition && queuePosition > 1) {
     try {
-      await interaction.editReply(`music: queued (position ${queuePosition}).`);
+      await interaction.editReply(formatMusicQueuedMessage(queuePosition));
     } catch {}
   }
 

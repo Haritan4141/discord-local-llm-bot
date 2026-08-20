@@ -9,6 +9,7 @@ import {
 } from '../config.mjs';
 import { sleep } from '../utils/http.mjs';
 import { truncateText } from '../utils/text.mjs';
+import { formatMusicGeneratingMessage } from './messages.mjs';
 
 let comfyWorkflowTemplate = null;
 let comfyWorkflowMtimeMs = 0;
@@ -226,7 +227,7 @@ export async function handleMusicJobComfy(job) {
   const timeoutMs = 20 * 60 * 1000;
 
   try {
-    await interaction.editReply(`music: generating... (${durationSec}s)`);
+    await interaction.editReply(formatMusicGeneratingMessage(durationSec));
   } catch {}
 
   const template = loadComfyWorkflowTemplate();

@@ -4,6 +4,7 @@ import {
 } from '../config.mjs';
 import { handleMusicJobAce } from './ace.mjs';
 import { comfyFreeMemory, handleMusicJobComfy } from './comfy.mjs';
+import { formatMusicErrorMessage } from './messages.mjs';
 
 export const musicQueue = [];
 let musicProcessing = false;
@@ -70,7 +71,7 @@ export async function processMusicQueue() {
         await handleMusicJob(job);
       } catch (e) {
         console.error(e);
-        try { await job.interaction.editReply(`music error: ${e?.message || String(e)}`); } catch {}
+        try { await job.interaction.editReply(formatMusicErrorMessage(e)); } catch {}
       }
     }
   } finally {
