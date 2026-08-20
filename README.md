@@ -319,6 +319,8 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 
 `MUSIC_BACKEND=comfyui` がデフォルトです。ComfyUI を使う場合は `COMFY_URL` と、必要に応じて `COMFY_WORKFLOW_PATH` を設定します。音楽キューが空になってから `MUSIC_VRAM_RELEASE_DELAY_SECONDS` 秒経過すると、Bot は ComfyUI の `/free` API に `unload_models=true` と `free_memory=true` を送り、読み込まれたモデルを解放します。既定値は300秒（5分）で、0にすると無効です。解放後の次回生成ではモデルの再ロードが発生するため、初回だけ時間がかかる場合があります。ACE-Step API を使う場合は `MUSIC_BACKEND=ace` と `ACE_URL` を設定します。
 
+ComfyUI を手動で管理する場合は、`music_controller/` フォルダー内の BAT を使えます。`music_controller/start-comfyui-music.bat` は8188番ポートの二重起動を防ぎ、`music_controller/status-comfyui-music.bat` は起動状態・RAM/VRAMの空き容量を表示します。生成後もモデルだけ解放したい場合は `music_controller/free-comfyui-music.bat`、プロセスごと終了してメモリを確実に戻したい場合は `music_controller/stop-comfyui-music.bat` を実行してください。これらは `C:\StabilityMatrix-v2.15.5\Data\Packages\ComfyUI` または `C:\StabilityMatrix\Data\Packages\ComfyUI` を自動検出します。
+
 生成されたファイルサイズが 24MB を超えると Discord にアップロードできないため、Bot 側で検知して案内メッセージだけを返します。長尺は `duration` を短くするか、低 bitrate の出力に切り替えてください。
 
 ## 画像入力
