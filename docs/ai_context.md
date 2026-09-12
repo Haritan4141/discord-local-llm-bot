@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 
-このプロジェクトは、Discord 上でローカル LLM または OpenAI API と会話できる Bot です。通常メッセージ、`/chat`、`/webchat` を処理し、画像添付、テキスト添付、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。
+このプロジェクトは、Discord 上でローカル LLM または OpenAI API と会話できる Bot です。通常メッセージ、`/chat`、`/webchat` を処理し、画像添付、テキスト添付、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、座標ボタン操作の `/othello` に対応しています。
 
 主な技術スタック:
 - Node.js 18+
@@ -36,7 +36,20 @@
 
 ## 現在の作業目的
 
-現在の目的は、OpenAI API 接続時に Responses API と公式 `web_search` を利用し、Discord から検索付き回答を得られるようにすることです。
+`/othello` は調査後、ユーザー承認の方針でコード改修とローカル検証を実施しました（2026-09-13）。座標ボタン、版付き入力、対局の状態管理、PNG座標軸、AI Worker、終了・期限切れ・通信復旧を実装しています。Bot再起動・Discord実機確認は実施していません。後続のユーザー依頼によりオセロ改修だけをmain反映対象に分離し、131件のテストを確認しました。Git反映状況は履歴と `docs/othello-checkpoint.md` を参照してください。
+
+調査時の原因記録: [othello-investigation.md](othello-investigation.md)
+
+改修結果・検証記録: [othello-checkpoint.md](othello-checkpoint.md)
+
+- `state.mjs` はパス・終局・投了をDiscordから分離。`view.mjs` は一つのスナップショットから座標ボタン・本文・PNGを作成。
+- `OthelloService` は本人・チャンネル・メッセージ・版を確認し、表示確定まで排他。通信再試行は同じ局面の再表示のみ。
+- 同一ユーザー/チャンネル1局、全体100局、放置30分で終了。開始失敗・削除・終了時にMapとタイマーを解放し、AIを中断。
+- AIは白視点・勝敗優先評価へ修正。独立Workerを同時2件まで、探索予算40/160/600ms、待機キュー100件/10秒期限で実行。
+- オセロのコマンド定義は未変更で再登録不要。旧リアクション方式・Bot再起動前の対局は引き継がず、新しい `/othello` を使用。
+- 同じ作業ツリーで `/draw`・`/reference` 改修も進んでいるため、その変更を維持。全体テスト結果はチェックポイントを参照。
+
+以下は前回までのOpenAI Responses API対応の目的・変更範囲として保持します。
 
 達成したい状態:
 - OpenAI 接続は Responses API を使う
@@ -99,6 +112,10 @@
 - Standby モードは固定返信だけに限定し、LLM やスラッシュコマンドは持たせない
 
 ## 未完了タスク
+
+オセロの運用上の残確認:
+- 稼働中のBotに反映する場合は、他の処理・並行変更の状態を確認して再起動する。
+- PC/スマホのDiscordで、新しい `/othello` から座標ボタン・候補ページ・投了・終局を確認する。外部通信を模擬した結合テストと実Worker/PNGはローカル確認済み。
 
 現時点の残作業:
 - ユーザー環境の OpenAI API キーで Discord 実機の通常会話、`/webchat`、`auto` 検索を確認
@@ -184,6 +201,9 @@
 
 ## 更新履歴
 
+- 2026-09-13
+  - `/othello` を調査し、誤着手・表示不一致・AI等の不具合をローカル再現。
+  - 調査方針の承認後、座標ボタン・状態管理・AI Worker・PNG・終了/復旧処理を実装し回帰テストを追加。結果は `docs/othello-checkpoint.md`。本番環境の操作は未実施。
 - 2026-07-10
   - OpenAI Responses API と公式 `web_search` を追加
   - `/webchat` の検索必須、`WEB_SEARCH_MODE=auto` の任意検索を Provider 別に実装

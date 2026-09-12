@@ -1,0 +1,9 @@
+import {buildYue2Workflow} from '../src/music/yue2-workflow.mjs';
+const lyricVerse="[Verse]\nMorning sunlight paints the station\nFootsteps find a patient beat\nEvery road becomes a question\nEvery friend a light we meet\n\n[Chorus]\nCarry the morning into the night\nKeep every window open and bright\nOver the hills and over the sea\nSing for the road that is waiting for me\n";
+const cases=[
+ {name:"integration_stress360",prompt:"English melodic folk pop, clear female singer, acoustic guitar, piano, warm bass, drums, 88 BPM, extended arrangement with verses, choruses, bridge, and a complete final chorus",lyrics:lyricVerse.repeat(24),durationSec:300,maxDurationSec:360,seed:9131360,language:"en"},
+ {name:"integration_cap240",prompt:"English melodic folk pop, clear female singer, acoustic guitar, piano, warm bass, drums, 88 BPM, extended arrangement with verses, choruses, bridge, and a complete final chorus",lyrics:lyricVerse.repeat(8),durationSec:120,maxDurationSec:240,seed:9130240,language:"en"},
+ {name:"integration_cap360",prompt:"English melodic folk pop, clear female singer, acoustic guitar, piano, warm bass, drums, 88 BPM, extended arrangement with verses, choruses, bridge, and a complete final chorus",lyrics:lyricVerse.repeat(12),durationSec:120,maxDurationSec:360,seed:9130360,language:"en"},
+ {name:"integration_natural",prompt:"Japanese warm piano pop, expressive female singer, gentle guitar, soft bass, light drums, 90 BPM, short verse and chorus with a gentle musical ending",lyrics:"[Verse]\n朝のひかり 窓をあけて\n小さな声が 空にとける\n昨日の雨も 遠くなって\n君の笑顔が 道をてらす\n\n[Chorus]\n今日を歌おう 風にのせて\nつないだ言葉 明日へ届け\n",durationSec:120,maxDurationSec:360,seed:9130007,language:"ja"},
+];
+console.log(JSON.stringify(cases.map(c=>({name:c.name,workflow:buildYue2Workflow({...c,filenamePrefix:'integration/'+c.name})}))));

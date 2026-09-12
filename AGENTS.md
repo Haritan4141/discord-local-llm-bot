@@ -19,11 +19,13 @@
 - `/draw` で OpenAI Image API（Flare / Sunburst、参照画像対応）または Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
 - `/reference add|list|show|delete` で名前付き参照画像を `data/references/` に永続保存・管理
 - `/music` で ComfyUI または ACE-Step を使った音楽生成を呼び出し
-- `/othello` でリアクション操作のオセロ (VS AI) を開始
+- `/othello` で座標ボタン操作のオセロ (VS AI) を開始。パス自動、投了確認、30分放置時の終了
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
 - 必要に応じて、同じ Bot の Standby モードで「メイン Bot 停止中」の固定返信を返せる
 
 ## 主要ファイル
+- YuE2組み込み: `docs/yue2-bot-integration.md`、実機検証: `docs/yue2-integration-acceptance.md`。既定YuE2 / 秒数は目安 / 独立安全上限 / metadataによる上限到達判定を維持する。
+- `src/discord/music*.mjs` : 音楽コマンド定義・ハンドラ。 `src/music/settings.mjs`, `service.mjs`, `queue-engine.mjs`, `comfy-client.mjs`, `yue2*.mjs` : 設定・共有キュー・通信・YuE2連携。
 - `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
 - `src/bot.mjs` : Discord クライアントと全スラッシュコマンドハンドラ
 - `src/config.mjs` : `.env` 読込、検証、ランタイム定数 (LLM_*, SD_*, MUSIC_*, BOT_TIMEZONE など)
@@ -50,7 +52,10 @@
 - `src/image/reference-images.mjs`, `references.mjs` : 参照画像の取得・検証と manifest / 画像の永続保存
 - `src/discord/draw.mjs`, `references.mjs`, `image-commands.mjs` : `/draw` / `/reference` ハンドラとコマンド登録定義
 - `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
-- `src/othello/board.mjs` / `ai.mjs` / `render.mjs` / `game.mjs` : 盤面・AI・PNG 描画・進行
+- `src/othello/board.mjs` / `state.mjs` : 盤面ルール・Discordに依存しない対局進行
+- `src/othello/view.mjs` / `render.mjs` : 版・座標付きボタン、本文、PNG。必ず同じ状態スナップショットから生成
+- `src/othello/game.mjs` : OthelloService。本人・メッセージ・版を検証し、表示確定まで対局単位で排他。期限・終了時にセッションを解放
+- `src/othello/ai.mjs` / `ai-client.mjs` / `ai-worker.mjs` : 白視点の探索、終局評価、時間予算付きWorker。Discordからは非同期APIを使用
 - `gui-server.mjs` : ローカル GUI サーバー (`http://127.0.0.1:3150`)
 - `gui/` : GUI の HTML/CSS/JS
 - `register-commands.mjs` : スラッシュコマンド登録
@@ -93,6 +98,7 @@
 - `/webchat` は `OLLAMA_WEB_API_KEY` が必要。検索自体は Ollama のクラウド API を使い、回答生成の LLM provider とは独立
 - Discord で長文が `message.txt` 添付になった場合でも、通常メッセージなら最初のテキスト添付 1 件を自動で読む
 - `/systemprompt` はそのチャンネルの Bot 挙動を直接変える。スラッシュコマンドを使える人なら変更できる前提で扱う
+- `/othello` は同一チャンネル・同一ユーザー1局、Bot全体100局まで。再起動時は失効する。古い入力を新しい局面に読み替えず、表示の再試行で着手を再実行しない
 - Standby Bot はメイン Bot と同時起動しない前提。GUI では排他制御している
 - Standby Bot は同じ `DISCORD_TOKEN` を使う。`STANDBY_CHANNEL_IDS` が空なら `CHANNEL_IDS` を使う
 - GUI 起動時に `.env` がなければ `.env.example` から自動作成される

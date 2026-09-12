@@ -78,6 +78,7 @@ listはdisplay name / slug / image count / updatedAt、showはcreatedAtと各画
 - 変更したsource 9モジュールの `node --check`：PASS。
 - `npm test`：158件PASS、失敗0、skip 0（2026-09-13の実行時点。同時進行のオセロ改修のテストも含む）。
 - PR用に `origin/main` から作成した独立worktreeへ本機能だけを取り出し、`npm ci --ignore-scripts` 後に再検証：`npm test` 117件PASS、失敗0、skip 0。`npm run check` と変更source 9モジュールの構文確認もPASS。こちらがPRに含むコードでの結果。
+- マージ前に最新main（オセロ改修とYuE2 `/music` 更新を含む `a447f5b`）を統合し、`src/bot.mjs` のimport競合を各ハンドラを保持して解消。統合後の `npm test` は207件PASS、失敗0、skip 0。`npm run check`、Bot構文確認、差分の空白検査もPASS。
 - 旧OpenAI generationテストをそのまま維持し、imageのみ・referenceのみ・両方・合計8枚・9枚拒否、モデル切替、SDの旧オプションを検証。
 - 一時ディレクトリでCRUD・新しいstoreインスタンスからの再読込・同時追加・保存上限・名前衝突・置換失敗からの保持・中断バックアップ復旧・hash不一致・junction拒否を検証。
 - `git diff --check` と `git check-ignore`：PASS。保存画像とmanifestはGit対象外。

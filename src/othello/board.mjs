@@ -19,14 +19,16 @@ export function createOthelloBoard() {
 }
 
 export function inBounds(r, c) {
-  return r >= 0 && r < OTHELLO_SIZE && c >= 0 && c < OTHELLO_SIZE;
+  return Number.isInteger(r) && Number.isInteger(c) && r >= 0 && r < OTHELLO_SIZE && c >= 0 && c < OTHELLO_SIZE;
 }
 
 export function otherColor(color) {
+  if (color !== OTHELLO_PLAYER && color !== OTHELLO_AI) throw new RangeError('Invalid Othello color');
   return color === OTHELLO_PLAYER ? OTHELLO_AI : OTHELLO_PLAYER;
 }
 
 export function getFlips(board, r, c, color) {
+  if (color !== OTHELLO_PLAYER && color !== OTHELLO_AI) return [];
   if (!inBounds(r, c) || board[r][c] !== OTHELLO_EMPTY) return [];
   const opp = otherColor(color);
   const flips = [];
@@ -58,6 +60,8 @@ export function getLegalMoves(board, color) {
 }
 
 export function applyMove(board, color, move) {
+  // Internal fast path for a move just returned by getLegalMoves(). External
+  // coordinates must go through state.playMove(), which recomputes flips.
   board[move.r][move.c] = color;
   for (const [rr, cc] of move.flips) {
     board[rr][cc] = color;

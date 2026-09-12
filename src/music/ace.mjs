@@ -41,6 +41,7 @@ export async function aceReleaseTask({ prompt, durationSec, audioFormat, lyrics,
   };
 
   const res = await fetch(`${ACE_BASE_URL}/release_task`, {
+    signal: AbortSignal.timeout(15000),
     method: 'POST',
     headers: aceHeaders(),
     body: JSON.stringify(payload),
@@ -64,6 +65,7 @@ export async function aceReleaseTask({ prompt, durationSec, audioFormat, lyrics,
 
 export async function aceQueryResult(taskId) {
   const res = await fetch(`${ACE_BASE_URL}/query_result`, {
+    signal: AbortSignal.timeout(15000),
     method: 'POST',
     headers: aceHeaders(),
     body: JSON.stringify({ task_id_list: [taskId] }),
@@ -97,7 +99,7 @@ export function normalizeAceAudioUrl(pathOrUrl) {
 
 export async function aceFetchAudio(pathOrUrl) {
   const url = normalizeAceAudioUrl(pathOrUrl);
-  const res = await fetch(url, { headers: ACE_KEY ? { Authorization: `Bearer ${ACE_KEY}` } : {} });
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: ACE_KEY ? { Authorization: `Bearer ${ACE_KEY}` } : {} });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`ACE-Step audio error: ${res.status} ${res.statusText}\n${text}`);
@@ -112,9 +114,7 @@ export async function handleMusicJobAce(job) {
   const pollMs = Math.max(500, numEnv(ACE_POLL_MS_VALUE, 2000));
   const timeoutMs = 20 * 60 * 1000;
 
-  try {
-    await interaction.editReply(formatMusicGeneratingMessage(durationSec));
-  } catch {}
+  await interaction.editReply(formatMusicGeneratingMessage(durationSec));
 
   const { taskId, queuePosition } = await aceReleaseTask({
     prompt,
@@ -134,7 +134,7 @@ export async function handleMusicJobAce(job) {
   const started = Date.now();
   while (true) {
     if (Date.now() - started > timeoutMs) {
-      throw new Error('music: timeout while waiting for result.');
+      throw Object.assign(new Error('music: timeout while waiting for result.'), { code: 'MUSIC_RESULT_TIMEOUT' });
     }
 
     await sleep(pollMs);
@@ -153,7 +153,7 @@ export async function handleMusicJobAce(job) {
     if (!filePath) throw new Error('music: audio file path missing.');
 
     const { buf } = await aceFetchAudio(filePath);
-    if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
+    if (buf.length > Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES)) {
       await interaction.editReply(
         `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`,
       );
@@ -165,7 +165,7 @@ export async function handleMusicJobAce(job) {
 
     const file = new AttachmentBuilder(buf, { name: filename });
     const meta = item?.metas?.duration ? `duration=${item.metas.duration}s` : `duration=${durationSec}s`;
-    const promptText = item?.prompt || prompt;
+    const promptText = String(item?.prompt || prompt).slice(0, 1000);
     const lyricText = (job.lyrics || '').trim();
     const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
     const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : '';

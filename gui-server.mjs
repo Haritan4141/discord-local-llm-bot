@@ -118,6 +118,10 @@ const ENV_SECTIONS = [
     description: 'ComfyUI または ACE-Step API を使った音楽生成の設定です。',
     fields: [
       { key: 'MUSIC_BACKEND', label: 'Backend', type: 'select', options: ['comfyui', 'ace'], placeholder: 'comfyui' },
+      { key: 'MUSIC_DEFAULT_MODEL', label: 'Default Music Model', type: 'select', options: ['yue2', 'ace-step'], placeholder: 'yue2', help: '省略時のモデルはYuE2です。/music modelで変更できます。BackendはACE-Step側の接続方式です。' },
+      { key: 'YUE2_URL', label: 'YuE2 ComfyUI URL', type: 'url', placeholder: 'http://192.168.0.104:8191' },
+      { key: 'YUE2_MAX_DURATION_SECONDS', label: 'YuE2 Safety Cap (seconds)', type: 'number', placeholder: '360', help: '希望の曲尺ではなく内部の打ち切り上限（60～360秒）。希望曲尺は上限より30秒以上短く指定します。' },
+      { key: 'YUE2_CHECKPOINT', label: 'YuE2 Checkpoint', type: 'text', placeholder: 'yue2_3b_bf16.safetensors' },
       { key: 'COMFY_URL', label: 'ComfyUI URL', type: 'url', placeholder: 'http://127.0.0.1:8188' },
       { key: 'COMFY_WORKFLOW_PATH', label: 'ComfyUI Workflow Path', type: 'text', placeholder: './comfyui/workflows/audio_ace_step_1_5_checkpoint_api.json' },
       { key: 'MUSIC_VRAM_RELEASE_DELAY_SECONDS', label: 'VRAM Release Delay (seconds)', type: 'number', placeholder: '300', help: 'ComfyUIの音楽キューが空になってからモデルを解放するまでの時間です。300=5分、0=無効。' },
