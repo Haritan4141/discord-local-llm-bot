@@ -6,7 +6,7 @@
 
 ユーザー承認に基づき、YuE2を既定とし、曲の長さを目安に変更した。目安で音声を切らずモデルEOSを待ち、安全上限360秒だけを別に設けた。上限到達時は途中終了の可能性を明示して音声を返す。無制限生成・自動再生成・終了の聴感保証はしない。
 
-実装は専用worktree / `codex/yue2-bot-integration`、main `a0a6c6a` から分離。他セッションのdraw/reference PR #4、元checkoutの未コミット変更は含めない。PRを作成し、マージはしない。
+実装は専用worktree / `codex/yue2-bot-integration`、main `a0a6c6a` から分離。作業中のmain更新を確認し、オセロ修正 `1890ae1` へrebaseして既存変更を保持。他セッションのdraw/reference PR #4、元checkoutの未コミット変更は含めない。[PR #5](https://github.com/Haritan4141/discord-local-llm-bot/pull/5) を作成し、マージはしていない。
 
 ## 実機・固定環境
 
@@ -63,4 +63,4 @@
 - 本番Discordへの投稿、Bot更新/再起動、slash command再登録、PRマージは未実施。Discord操作部分はモック検証であり、デプロイ後の実コマンド試験を置き換えない。
 - Bot外からのGUI同時生成を原子的にロックする仕組みはない。手動生成や他Botと同時に同じサーバー/GPUを使わないこと。
 
-コードの再検証: `npm test`、`git diff --check`、PowerShell parser。APIキーを使う試験は行わない。最終テスト件数とPR URLはPR本文に記録する。
+コードの最終再検証: `npm test` は175件PASS（rebase前129件から、最新mainのオセロテストを含む）。`git diff --check`、PowerShell parserもPASS。APIキーを使う試験は行わない。PR #4とはsrc/bot.mjsのimport付近が重なるため、後から組み合わせる際は両機能を保持してrebase/reviewする。今回、他PRのブランチや内容は変更していない。
