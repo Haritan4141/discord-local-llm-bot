@@ -12,7 +12,8 @@ Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API 
 - `WEB_SEARCH_MODE=auto` では、OpenAI のモデル自身または既存ルーターが必要なターンだけ検索
 - LLM Provider として Ollama / LM Studio / OpenAI / Custom OpenAI 互換 API を選択
 - `/systemprompt` によるチャンネル別の System Prompt 上書き
-- `/draw` で OpenAI Image API (`gpt-image-2`) または Stable Diffusion WebUI 画像生成
+- `/draw` で OpenAI Image API（Flare / Sunburst、参照画像対応）または Stable Diffusion WebUI 画像生成
+- `/reference add|list|show|delete` で名前付き参照画像を永続保存・管理
 - `/music` で ComfyUI または ACE-Step による音楽生成
 - `/othello` でオセロ (VS AI) をリアクション操作でプレイ
 - `/pause` / `/resume` / `/reset` によるチャンネル単位の制御
@@ -72,7 +73,9 @@ start-gui.bat
 - `STANDBY_REPLY_MESSAGE` (Standby Bot の固定返信)
 - `STANDBY_REPLY_COOLDOWN_SECONDS` (同一ユーザー連投時のクールダウン秒数)
 - `IMAGE_PROVIDER` (`openai` または `stable-diffusion`。未設定時は OpenAI LLM なら `openai`)
-- `OPENAI_IMAGE_MODEL` (既定値 `gpt-image-2`)
+- `OPENAI_IMAGE_MODEL_FLARE` (既定値 `gpt-image-2.5-flare`)
+- `OPENAI_IMAGE_MODEL_SUNBURST` (既定値 `gpt-image-2.5-sunburst`)
+- `OPENAI_IMAGE_MODEL` (互換用 fallback。専用設定が空欄の場合だけ使用)
 - `OPENAI_IMAGE_QUALITY` (`low`, `medium`, `high`, `auto`。既定値 `low`)
 - `OPENAI_IMAGE_SIZE` (`1024x1024` など。既定値 `1024x1024`)
 - `OPENAI_IMAGE_API_KEY` (空欄なら `LLM_API_KEY` を使用)
@@ -92,7 +95,8 @@ WEB_SEARCH_MODE=auto
 OPENAI_WEB_SEARCH_MAX_TOOL_CALLS=2
 OPENAI_WEB_SEARCH_MAX_SOURCES=1
 IMAGE_PROVIDER=openai
-OPENAI_IMAGE_MODEL=gpt-image-2
+OPENAI_IMAGE_MODEL_FLARE=gpt-image-2.5-flare
+OPENAI_IMAGE_MODEL_SUNBURST=gpt-image-2.5-sunburst
 OPENAI_IMAGE_QUALITY=low
 OPENAI_IMAGE_SIZE=1024x1024
 ```
@@ -242,7 +246,8 @@ npm start
 - `/webchat [message]` : Provider に応じた Web Search を使って最新情報つきで会話
 - `/systemprompt [text] [reset]` : このチャンネルの System Prompt を設定またはリセット
 - `/systemprompt-show` : 現在このチャンネルで有効な System Prompt を表示
-- `/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative]` : 画像生成
+- `/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative] [image] [reference] [model]` : 画像生成
+- `/reference add|list|show|delete` : 名前付き参照画像の保存・管理
 - `/music prompt [duration] [lyrics] [bpm] [language]` : 音楽生成
 - `/othello [difficulty]` : オセロ開始 (リアクション操作)
 - `/pause` : そのチャンネルで停止
@@ -253,13 +258,14 @@ npm start
 
 ## プロジェクト構成
 - `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
-- `src/bot.mjs` : Discord クライアントと全スラッシュコマンドハンドラ
+- `src/bot.mjs` : Discord クライアントとコマンド振り分け
+- `src/discord/draw.mjs`, `references.mjs`, `image-commands.mjs` : 画像生成・参照画像コマンドのハンドラと登録定義
 - `src/config.mjs` : `.env` 読込、検証、ランタイム定数
 - `src/utils/` : 共通ユーティリティ (`llm-config`, `env-file`, `text`, `http`)。`gui-server.mjs` からも import
 - `src/llm/` : OpenAI Responses / OpenAI 互換 Chat Completions クライアントと診断ログ
 - `src/web/` : OpenAI 以外で使う Ollama Web Search、コンテキスト生成、auto-route 判定
 - `src/discord/` : チャンネル状態、画像添付、typing ループ、キュー処理
-- `src/image/` : OpenAI Image API による画像生成
+- `src/image/` : OpenAI Image API の生成・編集、モデル解決、参照画像の取得・永続保存
 - `src/sd/` : Stable Diffusion txt2img、日本語プロンプト翻訳
 - `src/music/` : ComfyUI / ACE-Step 共通キュー
 - `src/othello/` : 盤面・AI・PNG 描画・ゲーム進行
@@ -268,21 +274,22 @@ npm start
 - `tests/` : `node --test` 用ユニットテスト
 
 ## テスト
-- `npm run check` : 全 `.mjs` ファイルの構文チェック
-- `npm test` : `npm run check` + `node --test tests/` (現在 72 件、純関数を中心に検証)
+- `npm run check` : エントリ・GUI・コマンド登録スクリプトの構文チェック
+- `npm test` : `npm run check` + `node --test`（純関数・画像リクエスト・コマンド・永続ストレージを検証）
 
 ## `/draw` 例
 ```text
 /draw prompt:"月面で宇宙服を着た白い猫" width:1024 height:1024 batch:1
 ```
 
-`IMAGE_PROVIDER=openai` の場合は Image API の `gpt-image-2` を直接呼び出します。`width` / `height` は各辺16px単位、最大3840px、総画素数655,360〜8,294,400、縦横比3:1以内で指定します。`batch` は1〜4です。`steps` / `cfg` / `sampler` / `seed` / `negative` は Stable Diffusion の場合だけ使われます。
+`IMAGE_PROVIDER=openai` の場合は OpenAI Image API を直接呼び出します。従来どおり `prompt` だけで生成でき、参照画像なしは `/v1/images/generations`、ありは複数画像を multipart/form-data で送る `/v1/images/edits` を使用します。`width` / `height` は各辺16px単位、最大3840px、総画素数655,360〜8,294,400、縦横比3:1以内で指定します。`batch` は1〜4です。`steps` / `cfg` / `sampler` / `seed` / `negative` は Stable Diffusion の場合だけ使われます。
 
 OpenAI Image API の設定例:
 
 ```env
 IMAGE_PROVIDER=openai
-OPENAI_IMAGE_MODEL=gpt-image-2
+OPENAI_IMAGE_MODEL_FLARE=gpt-image-2.5-flare
+OPENAI_IMAGE_MODEL_SUNBURST=gpt-image-2.5-sunburst
 OPENAI_IMAGE_QUALITY=low
 OPENAI_IMAGE_SIZE=1024x1024
 # 空欄なら LLM_API_KEY を使用
@@ -291,17 +298,30 @@ OPENAI_IMAGE_API_KEY=
 
 OpenAI の組織設定によっては、GPT Image モデルを使う前に Organization Verification が必要です。
 
-`gpt-image-2` の標準API料金（2026-08-02確認、1024x1024の画像出力目安）:
+モデルは `model:auto`（省略時も auto）、`model:flare`、`model:sunburst` から選びます。
 
-| Quality | 1枚 | 100枚 |
-| --- | ---: | ---: |
-| Low | $0.006 | $0.60 |
-| Medium | $0.053 | $5.30 |
-| High | $0.211 | $21.10 |
+| 選択 | 参照画像なし | 参照画像あり |
+| --- | --- | --- |
+| auto / 省略 | Flare 設定 | Sunburst 設定 |
+| flare | Flare 設定 | Flare 設定 |
+| sunburst | Sunburst 設定 | Sunburst 設定 |
 
-このほか、プロンプトのテキスト入力は100万トークンあたり$5です。通常の短い画像プロンプトでは画像出力料金に比べて小額です。最新料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) と [Image generation calculator](https://developers.openai.com/api/docs/guides/image-generation#calculating-costs) を確認してください。`batch`を増やすと、おおむね生成枚数に比例して料金が増えます。
+モデルIDの優先順位は、`OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルです。既存の `OPENAI_IMAGE_MODEL=gpt-image-2` を残すと、専用設定が空欄のモードは引き続き gpt-image-2 を使います。Flare / Sunburst に切り替える場合は上記の専用設定を指定してください。実際の使用モデルを生成結果とログに表示します。
 
-`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。
+`image` は任意の画像添付1枚、`reference` は保存済み profile の名前または slug です。併用時は添付 → 保存順に全画像を送り、合計8枚を超える場合はエラーにします。PNG / JPEG / WebP、1枚20 MiB以下に限定し、MIME・実データの署名・ダウンロードサイズを検証します。
+
+```text
+/draw prompt:"このキャラクターを月面に描いて" image:<添付画像>
+/draw prompt:"月面のAkaya" reference:Akaya
+/draw prompt:"添付の構図でAkayaを描いて" image:<構図画像> reference:Akaya model:auto batch:2
+/draw prompt:"白い猫" model:sunburst width:1536 height:1024
+```
+
+完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）を表示します。APIが返さない使用量は0として表示します。
+
+料金はモデル・品質・サイズ・参照画像・生成枚数で変わります。最新の仕様は [OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) を確認してください。
+
+`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference` / `model`（auto を含む）を指定すると、OpenAI 専用である旨を返して生成を実行しません。
 
 日本語プロンプトを英語に翻訳して SD WebUI に送る場合:
 
@@ -311,6 +331,26 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 ```
 
 翻訳は日本語文字を含む prompt だけに実行されます。翻訳に失敗した場合は元の prompt をそのまま使います。
+
+## 名前付き reference の使い方
+
+```text
+/reference add name:Akaya image:<画像1> image2:<画像2>
+/reference add name:Akaya image:<追加画像>
+/reference add name:Akaya image:<新画像> replace:true
+/reference list
+/reference show name:akaya
+/reference delete name:Akaya
+```
+
+- add は1回に最大4枚（image 必須、image2～image4 任意）。同名は追加、replace:true は既存の全画像を置換し、1 profile 最大8枚です。検証や保存に失敗した置換では元の profile を保持します。
+- 成功時に display name、slug、今回の登録枚数、現在総枚数を返します。display name は新規登録時の入力を保持し、内部 slug はパスに安全な名前へ正規化します。異なる名前が同じ slug になる場合は混在を防ぐためエラーにします。
+- list は display name / slug / image count / updatedAt、show は createdAt と各画像の filename / originalName / size も表示します。
+- delete は profile ディレクトリと画像を削除します。存在しない名前にはエラーを返します。
+- 保存先は起動ディレクトリに依存せず `<ProjectRoot>/data/references/<slug>/`。画像と `manifest.json` は再起動後も利用でき、Git管理から除外します。バックアップはこのディレクトリを別途保存してください。
+- profile はこのBotの許可チャンネル間で共有します。許可チャンネルでコマンドを使用できる人は追加・置換・削除できます。reference 管理はSD設定時も使えますが、生成に使えるのはOpenAIのみです。
+
+新オプションをDiscordへ反映するには、Botコードの更新後にGUIの `Register Guild Commands` / `Register Global Commands`、または `npm run register:guild` / `npm run register:global` を実行してください。稼働中Botには通常の停止・起動でコードと設定を反映します。
 
 ## `/music` 例
 ```text

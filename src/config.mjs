@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveOpenAiImageModels } from './image/openai-models.mjs';
 import {
   defaultLlmBaseUrl,
   isOpenAiApiProvider,
@@ -34,6 +35,8 @@ const {
   MEMBER_CONTEXT_MAX_CHARS,
   IMAGE_PROVIDER,
   OPENAI_IMAGE_MODEL,
+  OPENAI_IMAGE_MODEL_FLARE,
+  OPENAI_IMAGE_MODEL_SUNBURST,
   OPENAI_IMAGE_QUALITY,
   OPENAI_IMAGE_SIZE,
   OPENAI_IMAGE_API_KEY,
@@ -257,11 +260,17 @@ export const OPENAI_RESPONSES_ENABLED = isOpenAiApiProvider(
 export const IMAGE_PROVIDER_MODE = resolveImageProvider(IMAGE_PROVIDER, {
   openAiLlm: OPENAI_RESPONSES_ENABLED,
 });
-export const OPENAI_IMAGE_MODEL_NAME = String(OPENAI_IMAGE_MODEL || 'gpt-image-2').trim();
+export const OPENAI_IMAGE_MODELS = resolveOpenAiImageModels({
+  flare: OPENAI_IMAGE_MODEL_FLARE,
+  sunburst: OPENAI_IMAGE_MODEL_SUNBURST,
+  legacy: OPENAI_IMAGE_MODEL,
+});
+export const OPENAI_IMAGE_MODEL_NAME = OPENAI_IMAGE_MODELS.flare;
 export const OPENAI_IMAGE_QUALITY_VALUE = resolveOpenAiImageQuality(OPENAI_IMAGE_QUALITY);
 export const OPENAI_IMAGE_SIZE_VALUE = String(OPENAI_IMAGE_SIZE || '1024x1024').trim();
 export const OPENAI_IMAGE_API_KEY_VALUE = OPENAI_IMAGE_API_KEY || LLM_API_KEY;
 export const OPENAI_IMAGE_GENERATIONS_URL = 'https://api.openai.com/v1/images/generations';
+export const OPENAI_IMAGE_EDITS_URL = 'https://api.openai.com/v1/images/edits';
 export const OLLAMA_NATIVE_BASE_URL = LLM_PROVIDER_MODE === 'ollama'
   ? nativeOllamaBaseUrl(LLM_BASE_URL_RESOLVED)
   : '';
