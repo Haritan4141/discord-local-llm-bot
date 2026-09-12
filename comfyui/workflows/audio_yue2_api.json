@@ -1,0 +1,157 @@
+{
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "yue2_3b_bf16.safetensors"
+    },
+    "_meta": {
+      "title": "Load YuE2 Checkpoint"
+    }
+  },
+  "abc": {
+    "class_type": "YuE2GenerateABC",
+    "inputs": {
+      "clip": [
+        "checkpoint",
+        1
+      ],
+      "style": "English, warm piano pop, expressive female vocal, acoustic piano, soft bass, light drums, 90 BPM\n\n[Generation guidance]\nTarget duration is approximately 120 seconds. Treat the duration as a target, allow a natural ending, and do not stop abruptly at the target. Vocal language: en. Tempo: 90 BPM.",
+      "lyrics": "[Verse]\nMorning light across the room\nQuiet footsteps chase the gloom\nOpen windows, open sky\nLet the waking hours fly\n\n[Chorus]\nHold the day and let it shine\nEvery road can turn in time",
+      "seed": 2026091301,
+      "mode": "full",
+      "max_abc_tokens": 8192
+    },
+    "_meta": {
+      "title": "YuE2 Generate ABC"
+    }
+  },
+  "music": {
+    "class_type": "YuE2GenerateMusic",
+    "inputs": {
+      "clip": [
+        "checkpoint",
+        1
+      ],
+      "style": "English, warm piano pop, expressive female vocal, acoustic piano, soft bass, light drums, 90 BPM\n\n[Generation guidance]\nTarget duration is approximately 120 seconds. Treat the duration as a target, allow a natural ending, and do not stop abruptly at the target. Vocal language: en. Tempo: 90 BPM.",
+      "lyrics": "[Verse]\nMorning light across the room\nQuiet footsteps chase the gloom\nOpen windows, open sky\nLet the waking hours fly\n\n[Chorus]\nHold the day and let it shine\nEvery road can turn in time",
+      "abc": [
+        "abc",
+        0
+      ],
+      "seed": 2026091302,
+      "mode": "full",
+      "max_duration": 360,
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 100,
+      "repetition_penalty": 1.2
+    },
+    "_meta": {
+      "title": "YuE2 Generate Music"
+    }
+  },
+  "latent": {
+    "class_type": "EmptyYuE2LatentAudio",
+    "inputs": {
+      "seconds": [
+        "music",
+        1
+      ],
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Empty YuE2 Latent Audio"
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "checkpoint",
+        0
+      ],
+      "positive": [
+        "music",
+        0
+      ],
+      "negative": [
+        "music",
+        0
+      ],
+      "latent_image": [
+        "latent",
+        0
+      ],
+      "seed": 2026091303,
+      "steps": 32,
+      "cfg": 1.0,
+      "sampler_name": "dpm_2",
+      "scheduler": "sgm_uniform",
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "KSampler (YuE2 pinned settings)"
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecodeAudioTiled",
+    "inputs": {
+      "samples": [
+        "sampler",
+        0
+      ],
+      "vae": [
+        "checkpoint",
+        2
+      ],
+      "tile_size": 1920,
+      "overlap": 128
+    },
+    "_meta": {
+      "title": "VAE Decode Audio (Tiled)"
+    }
+  },
+  "save_mp3": {
+    "class_type": "SaveAudioAdvanced",
+    "inputs": {
+      "audio": [
+        "decode",
+        0
+      ],
+      "filename_prefix": "audio/yue2/example_mp3",
+      "format": "mp3",
+      "format.quality": "128k"
+    },
+    "_meta": {
+      "title": "Save YuE2 Audio (MP3)"
+    }
+  },
+  "save_flac": {
+    "class_type": "SaveAudioAdvanced",
+    "inputs": {
+      "audio": [
+        "decode",
+        0
+      ],
+      "filename_prefix": "audio/yue2/example_flac",
+      "format": "flac"
+    },
+    "_meta": {
+      "title": "Save YuE2 Audio (FLAC)"
+    }
+  },
+  "result_metadata": {
+    "class_type": "DiscordYuE2Result",
+    "inputs": {
+      "conditioning": [
+        "music",
+        0
+      ],
+      "target_duration_sec": 120,
+      "max_duration_sec": 360
+    },
+    "_meta": {
+      "title": "YuE2 Result Metadata"
+    }
+  }
+}

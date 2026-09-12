@@ -49,15 +49,12 @@ import {
   generateOpenAiImages,
   resolveOpenAiImageSize,
 } from './image/openai.mjs';
-import {
-  isMusicProcessing,
-  musicQueue,
-  processMusicQueue,
-} from './music/queue.mjs';
-import { formatMusicQueuedMessage } from './music/messages.mjs';
+import { musicJobs, musicSettings } from './music/queue.mjs';
+import { createMusicHandler } from './discord/music.mjs';
 import { OthelloService } from './othello/game.mjs';
 
 assertRuntimeConfig();
+const handleMusic = createMusicHandler({ jobs: musicJobs, settings: musicSettings });
 
 const client = new Client({
   intents: [
@@ -464,37 +461,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.commandName === 'music') {
-      if (st.paused) {
-        await interaction.reply('paused in this channel. use /resume.');
-        return;
-      }
-
-      const prompt = (interaction.options.getString('prompt', true) || '').trim();
-      if (!prompt) {
-        await interaction.reply('prompt is required.');
-        return;
-      }
-
-      const language = (interaction.options.getString('language') || '').trim();
-      const lyrics = (interaction.options.getString('lyrics') || '').trim();
-      const durationOpt = interaction.options.getInteger('duration');
-      let durationSec = Number.isFinite(durationOpt) ? durationOpt : 120;
-      durationSec = Math.max(10, Math.min(600, durationSec));
-      const bpmOpt = interaction.options.getInteger('bpm');
-      const bpm = Number.isFinite(bpmOpt) ? Math.max(30, Math.min(300, bpmOpt)) : null;
-
-      await interaction.deferReply();
-
-      musicQueue.push({ interaction, prompt, durationSec, lyrics, bpm, language });
-      const position = musicQueue.length + (isMusicProcessing() ? 1 : 0);
-
-      if (isMusicProcessing() || position > 1) {
-        try {
-          await interaction.editReply(formatMusicQueuedMessage(position));
-        } catch {}
-      }
-
-      processMusicQueue().catch(e => console.error('music queue error:', e));
+      await handleMusic(interaction, st);
       return;
     }
 
