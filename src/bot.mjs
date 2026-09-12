@@ -55,15 +55,7 @@ import {
   processMusicQueue,
 } from './music/queue.mjs';
 import { formatMusicQueuedMessage } from './music/messages.mjs';
-import {
-  REACTION_DIGITS,
-  getOthelloGame,
-  getReactionMoves,
-  handlePlayerMove,
-  othelloMessageToGame,
-  startOthelloGame,
-  updateReactionGame,
-} from './othello/game.mjs';
+import { OthelloService } from './othello/game.mjs';
 
 assertRuntimeConfig();
 
@@ -74,10 +66,20 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+  // Receive deletion events even if a long-running game's message was evicted.
+  partials: [Partials.Message, Partials.Channel],
 });
+
+const othello = new OthelloService({ isAllowedChannel: id => allowedChannelIds.has(id) });
+
+client.on(Events.MessageDelete, message => othello.removeMessage(message.id));
+client.on(Events.MessageBulkDelete, messages => {
+  for (const id of messages.keys()) othello.removeMessage(id);
+});
+client.on(Events.ChannelDelete, channel => othello.removeChannel(channel.id));
+client.on(Events.ThreadDelete, thread => othello.removeChannel(thread.id));
+client.on(Events.GuildDelete, guild => othello.removeGuild(guild.id));
 
 const SYSTEM_PROMPT_OVERRIDE_MARKER = '--- system prompt override ---';
 const LEGACY_PERSONA_OVERRIDE_MARKER = '--- persona override ---';
@@ -154,6 +156,10 @@ client.on(Events.MessageCreate, (msg) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    if (othello.owns(interaction)) {
+      await othello.handle(interaction);
+      return;
+    }
     if (!interaction.isChatInputCommand()) return;
 
     if (!allowedChannelIds.has(interaction.channelId)) {
@@ -180,7 +186,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           '• `/webchat <message>` : Web検索を使って最新情報つきで会話',
           '• `/systemprompt [text] [reset]` : System Prompt を設定またはリセット',
           '• `/systemprompt-show` : 現在の System Prompt を表示',
-          '• `/othello [difficulty]` : オセロ開始（リアクション操作）',
+          '• `/othello [difficulty]` : オセロ開始（座標ボタンで操作・黒でAIと対局）',
           '• `/pause` : 応答を一時停止',
           '• `/resume` : 応答を再開',
           '• `/reset` : 会話履歴をリセット',
@@ -494,7 +500,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.commandName === 'othello') {
       const difficulty = interaction.options.getString('difficulty') || 'normal';
-      await startOthelloGame(interaction, difficulty);
+      await othello.start(interaction, difficulty);
       return;
     }
 
@@ -597,57 +603,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.on(Events.MessageReactionAdd, async (reaction, user) => {
-  try {
-    if (user.bot) return;
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
-
-    const gameId = othelloMessageToGame.get(reaction.message.id);
-    if (!gameId) return;
-    const game = getOthelloGame(gameId);
-    if (!game) return;
-    if (user.id !== game.playerId) {
-      try { await reaction.users.remove(user.id); } catch {}
-      return;
-    }
-
-    const name = reaction.emoji.name;
-    if (name === '◀️') {
-      game.reactionPage = Math.max(0, (game.reactionPage || 0) - 1);
-      await updateReactionGame(game, reaction.message.channel);
-      try { await reaction.users.remove(user.id); } catch {}
-      return;
-    }
-    if (name === '▶️') {
-      const { totalPages } = getReactionMoves(game);
-      game.reactionPage = Math.min(totalPages - 1, (game.reactionPage || 0) + 1);
-      await updateReactionGame(game, reaction.message.channel);
-      try { await reaction.users.remove(user.id); } catch {}
-      return;
-    }
-
-    const digit = REACTION_DIGITS.get(name);
-    if (digit === undefined) {
-      try { await reaction.users.remove(user.id); } catch {}
-      return;
-    }
-
-    const { slice } = getReactionMoves(game);
-    if (!slice[digit]) {
-      try { await reaction.users.remove(user.id); } catch {}
-      return;
-    }
-
-    const move = slice[digit];
-    const result = await handlePlayerMove(game, move);
-    if (result.ok) {
-      await updateReactionGame(game, reaction.message.channel);
-    }
-    try { await reaction.users.remove(user.id); } catch {}
-  } catch (e) {
-    console.error('reaction error:', e);
-  }
-});
 
 client.login(DISCORD_TOKEN_VALUE);

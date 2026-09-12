@@ -1,6 +1,6 @@
 # discord-local-llm-bot
 
-Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Provider 別の Web Search、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、リアクション操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
+Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Provider 別の Web Search、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、座標ボタン操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
 
 ## 主な機能
 - 指定チャンネルのみ応答 (`CHANNEL_IDS` で制限)
@@ -14,7 +14,7 @@ Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API 
 - `/systemprompt` によるチャンネル別の System Prompt 上書き
 - `/draw` で OpenAI Image API (`gpt-image-2`) または Stable Diffusion WebUI 画像生成
 - `/music` で ComfyUI または ACE-Step による音楽生成
-- `/othello` でオセロ (VS AI) をリアクション操作でプレイ
+- `/othello` でオセロ (VS AI) を座標ボタンでプレイ。パスは自動、投了・放置時の終了に対応
 - `/pause` / `/resume` / `/reset` によるチャンネル単位の制御
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
 
@@ -123,12 +123,9 @@ Bot Permissions は最低限、次を付けてください。
 - `Send Messages`
 - `Read Message History`
 - `Attach Files`
-- `Add Reactions`
 - `Use Slash Commands`
 
-`/othello` を使う場合は追加で:
-
-- `Manage Messages`
+`/othello` は座標ボタンで操作するため、`Add Reactions` / `Manage Messages` は不要です。
 
 スレッド内でも使う場合は追加で:
 
@@ -244,12 +241,28 @@ npm start
 - `/systemprompt-show` : 現在このチャンネルで有効な System Prompt を表示
 - `/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative]` : 画像生成
 - `/music prompt [duration] [lyrics] [bpm] [language]` : 音楽生成
-- `/othello [difficulty]` : オセロ開始 (リアクション操作)
+- `/othello [difficulty]` : オセロ開始 (座標ボタン操作・プレイヤーは黒)
 - `/pause` : そのチャンネルで停止
 - `/resume` : 再開
 - `/reset` : そのチャンネルの履歴をリセット
 
 `/systemprompt` はそのチャンネルの System Prompt を上書きするため、実行するとそのチャンネル内の Bot の挙動が変わります。スラッシュコマンドを使える人なら変更できる前提で運用してください。
+
+## `/othello` の遊び方
+
+1. `/othello` を実行します。難易度は「弱め」「普通」「強め」「最強」から選べ、省略時は「普通」です。
+2. あなたは黒・先手です。盤面のA-H / 1-8を見て、下の `D3` や `C4` などのボタンを押します。
+3. 点は置けるマス、リングは最後に置いた石です。AIの思考・表示更新が終わると次の操作ができます。候補が多い場合は「前の候補」「次の候補」で切り替えます。
+4. 置けるマスがない場合は自動でパスします。両者とも置けなくなると、空マスが残っていても対局終了です。
+5. 途中でやめるには「投了」→「投了する」を押します。「対局に戻る」で取り消せます。再戦は `/othello` を実行します。
+
+同じ人は同じチャンネルで1局まで対局できます。他の人はその盤面を操作できず、自分の `/othello` で別の対局を始められます。最後の操作から30分で終了します。Bot全体の同時対局数は100局までです。
+
+古い画面のボタンや更新中の連打では石を置かず、最新の盤面から操作するよう案内します。表示の通信エラーは同じ局面を最大3回送信して復旧し、復旧できない場合は対局を終了します。石を重複して置くことはありません。
+
+AIはLLMや外部APIを使用しません。「弱め」はランダム、それ以外は白側の有利さと終局の勝敗を評価して読み進めます。探索の目安は普通40ms、強め160ms、最強600msで、独立したWorker（同時2件まで）で実行します。「最強」はこのBot内の最高難易度です。
+
+対局はメモリ内で管理し、Bot再起動後は引き継ぎません。古い盤面のボタンには終了・期限切れを案内します。旧リアクション方式の対局も引き継げないため、更新後は新しく `/othello` を実行してください。今回のオセロ改修ではスラッシュコマンドの定義を変更していないため、オセロだけを理由とするコマンド再登録は不要です。
 
 ## プロジェクト構成
 - `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
@@ -262,7 +275,7 @@ npm start
 - `src/image/` : OpenAI Image API による画像生成
 - `src/sd/` : Stable Diffusion txt2img、日本語プロンプト翻訳
 - `src/music/` : ComfyUI / ACE-Step 共通キュー
-- `src/othello/` : 盤面・AI・PNG 描画・ゲーム進行
+- `src/othello/` : 盤面・対局状態・座標ボタン・PNG・AI Worker・セッション管理
 - `gui-server.mjs` : ローカル GUI サーバー
 - `gui/` : GUI の HTML / CSS / JS
 - `tests/` : `node --test` 用ユニットテスト

@@ -1,233 +1,307 @@
-import { AttachmentBuilder, MessageFlags } from 'discord.js';
-import {
-  OTHELLO_AI,
-  OTHELLO_PLAYER,
-  applyMove,
-  countPieces,
-  createOthelloBoard,
-  getLegalMoves,
-  isBoardFull,
-  otherColor,
-} from './board.mjs';
-import { chooseAiMove } from './ai.mjs';
-import { renderOthelloPng } from './render.mjs';
+import { randomBytes } from 'node:crypto';
+import { MessageFlags } from 'discord.js';
+import { OTHELLO_AI, OTHELLO_PLAYER } from './board.mjs';
+import { createGameState, finishGame, playMove, snapshotGame } from './state.mjs';
+import { buildOthelloView, movePage, parseComponentId } from './view.mjs';
 
-export const othelloGames = new Map(); // gameId -> game
-export const othelloMessageToGame = new Map(); // messageId -> gameId (reaction mode)
+const IDLE_MS = 30 * 60 * 1000;
+const PERMANENT_ERRORS = new Set([10003, 10008, 50001, 50013]);
+const defaultAi = async (...args) => (await import('./ai-client.mjs')).chooseAiMoveAsync(...args);
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-export const REACTION_DIGITS = new Map([
-  ['0️⃣', 0], ['1️⃣', 1], ['2️⃣', 2], ['3️⃣', 3], ['4️⃣', 4],
-  ['5️⃣', 5], ['6️⃣', 6], ['7️⃣', 7], ['8️⃣', 8], ['9️⃣', 9],
-]);
-
-export function formatOthelloStatus(game) {
-  const { black, white } = countPieces(game.board);
-  const turn = game.current === OTHELLO_PLAYER ? 'あなた (黒)' : 'AI (白)';
-  const diffLabel = {
-    easy: '弱め',
-    normal: '普通',
-    hard: '強め',
-    max: '最強',
-  }[game.difficulty] || game.difficulty;
-  const note = game.note ? `\n${game.note}` : '';
-  return `オセロ (VS AI) | AI: ${diffLabel} | 操作: リアクション\n手番: ${turn}\n黒 ${black} - 白 ${white}${note}`;
-}
-
-export function getReactionMoves(game) {
-  const playerMoves = getLegalMoves(game.board, OTHELLO_PLAYER);
-  const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(playerMoves.length / pageSize));
-  const page = Math.min(game.reactionPage || 0, totalPages - 1);
-  const slice = playerMoves.slice(page * pageSize, page * pageSize + pageSize);
-  return { playerMoves, slice, page, totalPages };
-}
-
-async function notifyReactionPermission(game, message) {
-  if (game.reactionPermissionWarned) return;
-  game.reactionPermissionWarned = true;
-  try {
-    await message.channel.send(
-      '⚠️ リアクションを付与する権限がありません。権限: メッセージにリアクション / リアクションの管理 を付与してください。',
-    );
-  } catch {}
-}
-
-async function syncReactionControls(game, message, sliceLen, page, totalPages) {
-  if (game.reactionDisabled) return;
-  const digits = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
-  const desired = [];
-  const count = Math.min(sliceLen, digits.length);
-  for (let i = 0; i < count; i++) desired.push(digits[i]);
-  if (totalPages > 1 && page > 0) desired.push('◀️');
-  if (totalPages > 1 && page < totalPages - 1) desired.push('▶️');
-
-  const botId = message.client?.user?.id;
-
-  for (let pass = 0; pass < 2; pass++) {
-    const fresh = pass === 0 ? message : await message.fetch().catch(() => message);
-    const cache = fresh.reactions.cache;
-    let missing = false;
-
-    for (const emoji of desired) {
-      const reaction = cache.get(emoji);
-      if (reaction?.me) continue;
-      missing = true;
-      try {
-        await fresh.react(emoji);
-      } catch (e) {
-        if (e?.code === 50013) {
-          game.reactionDisabled = true;
-          await notifyReactionPermission(game, message);
-          return;
-        }
-      }
-    }
-
-    if (!missing || pass === 1) break;
-    await new Promise(resolve => setTimeout(resolve, 250));
+// A game never depends on a collector or a long-lived interaction token.
+export class OthelloService {
+  constructor({
+    chooseAi = defaultAi, render = buildOthelloView, isAllowedChannel = () => true,
+    idleMs = IDLE_MS, maxGames = 100, wait = delay, now = Date.now,
+    schedule = setTimeout, unschedule = clearTimeout, logger = console,
+  } = {}) {
+    Object.assign(this, { chooseAi, render, isAllowedChannel, idleMs, maxGames, wait, now, schedule, unschedule, logger });
+    this.games = new Map();
+    this.byPlayer = new Map();
+    this.byMessage = new Map();
   }
 
-  if (botId) {
-    const cache = message.reactions.cache;
-    for (const [emoji, reaction] of cache) {
-      if (desired.includes(emoji)) continue;
-      if (!reaction.me) continue;
-      try {
-        await reaction.users.remove(botId);
-      } catch (e) {
-        if (e?.code === 50013) {
-          game.reactionDisabled = true;
-          await notifyReactionPermission(game, message);
-          return;
-        }
+  owns(interaction) {
+    return interaction.isButton?.() && interaction.customId?.startsWith('othello:');
+  }
+
+  log(stage, error) {
+    // REST errors can contain request payloads/tokens; log only a code.
+    this.logger.warn('[othello] ' + stage + ': ' + (error?.code || error?.name || 'Error'));
+  }
+
+  async tell(interaction, content) {
+    try {
+      const payload = { content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } };
+      if (interaction.deferred && interaction.isChatInputCommand?.()) {
+        // A failed /othello start must also finish its deferred receipt.
+        await this.completeReceipt(interaction, content);
+      } else if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
+      else await interaction.reply(payload);
+    } catch (error) { this.log('notice failed', error); }
+  }
+
+  async completeReceipt(interaction, content) {
+    const payload = { content, allowedMentions: { parse: [] } };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { await interaction.editReply(payload); return; }
+      catch (error) {
+        this.log('start receipt failed', error);
+        if (attempt === 0) await this.wait(300);
       }
     }
+    // Keep a successfully created game alive even if its private receipt fails.
+    try { await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral }); }
+    catch (error) { this.log('receipt fallback failed', error); }
   }
-}
 
-export async function updateReactionGame(game, channel) {
-  const { slice, page, totalPages } = getReactionMoves(game);
-  const labels = new Map();
-  slice.forEach((m, idx) => {
-    labels.set(`${m.r},${m.c}`, `${idx}`);
-  });
-  const file = new AttachmentBuilder(renderOthelloPng(game.board, labels), { name: `othello_${game.id}.png` });
+  async closeDisplay(session, content, error) {
+    if (!session.message || [10003, 10008, 50001].includes(error?.code)) return;
+    try {
+      // Text-only cleanup can succeed when image uploads lack permission.
+      await session.message.edit({ content, components: [], allowedMentions: { parse: [] } });
+    } catch (editError) { this.log('final notice failed', editError); }
+  }
 
-  const list = slice.map((m, idx) => `${idx}: ${String.fromCharCode(65 + m.c)}${m.r + 1}`).join(' ');
-  const pageText = `page ${page + 1}/${totalPages}`;
-  const msg = await channel.messages.fetch(game.reactionMessageId).catch(() => null);
-  if (msg) {
-    await msg.edit({
-      content: `${formatOthelloStatus(game)}\n${pageText}\n${list || ''}`,
-      files: [file],
+  alive(session) { return this.games.get(session.state.id) === session; }
+
+  cancelTimer(session) {
+    if (session.timer !== null) this.unschedule(session.timer);
+    session.timer = null;
+  }
+
+  armTimer(session) {
+    this.cancelTimer(session);
+    if (!this.alive(session)) return;
+    session.expiresAt = this.now() + this.idleMs;
+    session.timer = this.schedule(() => {
+      void this.expire(session).catch(error => this.log('expire failed', error));
+    }, this.idleMs);
+    session.timer?.unref?.();
+  }
+
+  drop(session) {
+    if (!this.alive(session)) return;
+    this.cancelTimer(session);
+    session.abort.abort();
+    this.games.delete(session.state.id);
+    if (this.byPlayer.get(session.playerKey) === session) this.byPlayer.delete(session.playerKey);
+    if (session.message) this.byMessage.delete(session.message.id);
+  }
+
+  removeMessage(id) {
+    const session = this.byMessage.get(id);
+    if (session) this.drop(session);
+  }
+
+  removeChannel(id) {
+    for (const session of this.games.values()) if (session.state.channelId === id) this.drop(session);
+  }
+
+  removeGuild(id) {
+    for (const session of this.games.values()) if (session.state.guildId === id) this.drop(session);
+  }
+
+  dispose() {
+    for (const session of this.games.values()) this.drop(session);
+  }
+
+  async publish(session, phase = 'ready') {
+    // Build ONCE before awaiting. A retry never reapplies a move or mixes an
+    // old image with a new status. The caller holds the session lock.
+    const snapshot = snapshotGame(session.state);
+    const payload = this.render(snapshot, { phase });
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (!this.alive(session)) return false;
+      try {
+        // discord.js appends new file entries while resolving attachments.
+        // Each attempt needs its own array to keep replacement idempotent.
+        await session.message.edit({ ...payload, attachments: [] });
+        if (!this.alive(session)) return false;
+        session.publishedRevision = snapshot.revision;
+        return true;
+      } catch (error) {
+        lastError = error;
+        if (PERMANENT_ERRORS.has(error?.code)) break;
+        if (attempt < 2) await this.wait(attempt === 0 ? 300 : 1000);
+      }
+    }
+    throw lastError;
+  }
+
+  async fail(session, error, interaction) {
+    if (!this.alive(session)) return;
+    this.log('game ended after failure', error);
+    finishGame(session.state, 'error');
+    this.drop(session);
+    await this.closeDisplay(session, '⚠️ 対局の更新に失敗したため終了しました。もう一度 /othello を実行してください。', error);
+    if (interaction) await this.tell(interaction, '⚠️ 対局を続けられなくなったため終了しました。もう一度 /othello を実行してください。');
+  }
+
+  async start(interaction, difficulty) {
+    if (!this.isAllowedChannel(interaction.channelId)) {
+      await this.tell(interaction, 'このチャンネルでは使用できません。');
+      return;
+    }
+    const playerKey = interaction.channelId + ':' + interaction.user.id;
+    const existing = this.byPlayer.get(playerKey);
+    if (existing) {
+      const link = existing.message
+        ? 'https://discord.com/channels/' + (existing.state.guildId || '@me') + '/' + existing.state.channelId + '/' + existing.message.id : null;
+      await this.tell(interaction, link
+        ? 'このチャンネルでは既に対局中です。[盤面を開く](' + link + ')\n新しく始める場合は、盤面の「投了」で終了してください。'
+        : '対局を開始しています。少しお待ちください。');
+      return;
+    }
+    if (this.games.size >= this.maxGames) {
+      await this.tell(interaction, '対局数が上限に達しています。しばらくしてからお試しください。');
+      return;
+    }
+    const state = createGameState({
+      id: randomBytes(9).toString('base64url'), playerId: interaction.user.id,
+      channelId: interaction.channelId, guildId: interaction.guildId, difficulty,
     });
-    const stateKey = `${slice.length}:${page}:${totalPages}`;
-    if (!game.reactionDisabled && game.reactionStateKey !== stateKey) {
-      game.reactionStateKey = stateKey;
-      await syncReactionControls(game, msg, slice.length, page, totalPages);
+    const session = {
+      state, playerKey, message: null, publishedRevision: -1, busy: true,
+      timer: null, expiresAt: Infinity, abort: new AbortController(),
+    };
+    // Reserve before the first await to prevent duplicate starts.
+    this.games.set(state.id, session);
+    this.byPlayer.set(playerKey, session);
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!this.alive(session)) {
+        await this.tell(interaction, '対局の開始が取り消されました。もう一度 /othello を実行してください。');
+        return;
+      }
+      const payload = this.render(snapshotGame(state));
+      // Don't retry creation: an ambiguous response could duplicate the board.
+      const message = await interaction.channel.send(payload);
+      session.message = message;
+      if (!this.alive(session)) {
+        await this.closeDisplay(session, 'この対局は終了しました。');
+        await this.tell(interaction, '対局の開始が取り消されました。もう一度 /othello を実行してください。');
+        return;
+      }
+      this.byMessage.set(message.id, session);
+      // A delete event may arrive before send resolves and before this index
+      // exists. Force a REST fetch after indexing to close that startup gap.
+      await message.fetch(true);
+      if (!this.alive(session)) {
+        await this.tell(interaction, '盤面が削除されたため対局を終了しました。もう一度 /othello を実行してください。');
+        return;
+      }
+      session.publishedRevision = state.revision;
+      await this.completeReceipt(interaction, '対局を開始しました。あなたは黒です。\nhttps://discord.com/channels/'
+        + (state.guildId || '@me') + '/' + state.channelId + '/' + message.id);
+    } catch (error) {
+      if (this.alive(session)) await this.fail(session, error, interaction);
+      else await this.tell(interaction, '対局は終了しました。もう一度 /othello を実行してください。');
+    } finally {
+      session.busy = false;
+      if (this.alive(session)) this.armTimer(session);
     }
   }
-}
 
-export function checkGameEnd(game) {
-  const playerMoves = getLegalMoves(game.board, OTHELLO_PLAYER);
-  const aiMoves = getLegalMoves(game.board, OTHELLO_AI);
-  if (isBoardFull(game.board) || (playerMoves.length === 0 && aiMoves.length === 0)) {
-    game.ended = true;
-    const { black, white } = countPieces(game.board);
-    if (black > white) game.note = '勝利: あなた (黒)';
-    else if (white > black) game.note = '勝利: AI (白)';
-    else game.note = '引き分け';
-    if (game.reactionMessageId) {
-      othelloMessageToGame.delete(game.reactionMessageId);
+  async runAi(session) {
+    while (this.alive(session) && session.state.status === 'playing' && session.state.current === OTHELLO_AI) {
+      if (!await this.publish(session, 'thinking')) return;
+      const move = await this.chooseAi(snapshotGame(session.state).board, session.state.difficulty, { signal: session.abort.signal });
+      if (!this.alive(session)) return;
+      if (!move || !playMove(session.state, move, OTHELLO_AI)) throw new Error('Invalid AI move');
+    }
+  }
+
+  async handle(interaction) {
+    if (!this.owns(interaction)) return false;
+    const input = parseComponentId(interaction.customId);
+    const session = input && this.games.get(input.gameId);
+    if (!session) {
+      await this.tell(interaction, 'この対局は終了または期限切れです。Bot再起動後も対局は引き継がれません。新しく /othello を実行してください。');
+      return true;
+    }
+    const state = session.state;
+    if (interaction.user.id !== state.playerId) {
+      await this.tell(interaction, 'この盤面は対局を始めた人だけが操作できます。自分の対局は /othello で始められます。');
+      return true;
+    }
+    if (interaction.channelId !== state.channelId || interaction.guildId !== state.guildId
+      || interaction.message?.id !== session.message?.id || !this.isAllowedChannel(interaction.channelId)) {
+      await this.tell(interaction, 'この場所では対局を操作できません。元の盤面を開いてください。');
+      return true;
+    }
+    if (session.busy) {
+      await this.tell(interaction, 'AIの思考または盤面の更新中です。画面が更新されてから操作してください。');
+      return true;
+    }
+    if (session.expiresAt <= this.now()) {
+      await this.tell(interaction, 'この対局は期限切れです。新しく /othello を実行してください。');
+      await this.expire(session);
+      return true;
+    }
+    if (state.status !== 'playing' || input.revision !== state.revision || input.revision !== session.publishedRevision) {
+      await this.tell(interaction, '古い盤面からの操作でした。最新の盤面にあるボタンを押してください。');
+      return true;
+    }
+
+    session.busy = true;
+    this.cancelTimer(session);
+    let acknowledged = false;
+    try {
+      await interaction.deferUpdate();
+      acknowledged = true;
+      if (!this.alive(session)) return true;
+      const { action, value } = input;
+      if (action === 'move' && !state.confirmResign && state.current === OTHELLO_PLAYER) {
+        const r = Number(value[1]) - 1;
+        const c = value.charCodeAt(0) - 65;
+        if (!movePage(state).visible.some(m => m.r === r && m.c === c) || !playMove(state, { r, c }, OTHELLO_PLAYER)) {
+          await this.tell(interaction, 'そこには置けません。表示されている座標から選んでください。');
+          return true;
+        }
+        await this.runAi(session);
+      } else if (action === 'page' && !state.confirmResign) {
+        const page = Number(value);
+        if (page >= movePage(state).totalPages || page === state.page) return true;
+        state.page = page;
+        state.revision += 1;
+      } else if (action === 'resign' && !state.confirmResign) {
+        state.confirmResign = true;
+        state.revision += 1;
+      } else if (action === 'cancel' && state.confirmResign) {
+        state.confirmResign = false;
+        state.revision += 1;
+      } else if (action === 'confirm' && state.confirmResign) {
+        finishGame(state, 'resigned');
+      } else {
+        await this.tell(interaction, '最新の盤面にあるボタンを押してください。');
+        return true;
+      }
+      if (!this.alive(session)) return true;
+      await this.publish(session);
+      if (state.status !== 'playing') this.drop(session);
+    } catch (error) {
+      if (acknowledged) await this.fail(session, error, interaction);
+      else this.log('acknowledgement failed; move not applied', error);
+    } finally {
+      session.busy = false;
+      if (this.alive(session)) this.armTimer(session);
     }
     return true;
   }
-  return false;
-}
 
-export function runAiIfNeeded(game) {
-  let note = '';
-  let loopGuard = 0;
-  while (!game.ended && loopGuard < 10) {
-    loopGuard += 1;
-    if (checkGameEnd(game)) break;
-    const moves = getLegalMoves(game.board, game.current);
-    if (moves.length === 0) {
-      note = game.current === OTHELLO_PLAYER ? 'パス: あなた (黒)' : 'パス: AI (白)';
-      game.current = otherColor(game.current);
-      continue;
+  async expire(session) {
+    if (!this.alive(session) || session.busy) return;
+    session.busy = true;
+    this.cancelTimer(session);
+    finishGame(session.state, 'expired');
+    try { await this.publish(session); }
+    catch (error) {
+      this.log('expiry display failed', error);
+      await this.closeDisplay(session, '⌛ 30分間操作がなかったため対局を終了しました。新しく /othello を実行してください。', error);
     }
-    if (game.current === OTHELLO_AI) {
-      const m = chooseAiMove(game.board, moves, game.difficulty);
-      if (m) applyMove(game.board, OTHELLO_AI, m);
-      game.current = OTHELLO_PLAYER;
-      continue;
-    }
-    break;
+    finally { this.drop(session); }
   }
-  if (loopGuard >= 10) {
-    console.warn(`[othello] runAiIfNeeded loopGuard tripped: game=${game.id} current=${game.current}`);
-  }
-  if (note) game.note = note;
-}
-
-export function getOthelloGame(gameId) {
-  return othelloGames.get(gameId) || null;
-}
-
-export async function handlePlayerMove(game, move) {
-  if (game.locked) return { ok: false, message: '他の操作中です。少し待ってください。' };
-  if (game.ended) return { ok: false, message: '対局は終了しました。' };
-  if (game.current !== OTHELLO_PLAYER) return { ok: false, message: 'AIの手番です。' };
-  const legal = getLegalMoves(game.board, OTHELLO_PLAYER);
-  const target = legal.find(m => m.r === move.r && m.c === move.c);
-  if (!target) return { ok: false, message: 'そこには置けません。' };
-
-  game.locked = true;
-  try {
-    applyMove(game.board, OTHELLO_PLAYER, target);
-    game.current = OTHELLO_AI;
-    game.note = '';
-    runAiIfNeeded(game);
-    return { ok: true };
-  } finally {
-    game.locked = false;
-  }
-}
-
-export async function startOthelloGame(interaction, difficulty) {
-  const gameId = Math.random().toString(36).slice(2, 10);
-  const game = {
-    id: gameId,
-    channelId: interaction.channelId,
-    playerId: interaction.user.id,
-    difficulty,
-    board: createOthelloBoard(),
-    current: OTHELLO_PLAYER,
-    ended: false,
-    locked: false,
-    note: '',
-    reactionMessageId: null,
-    reactionPage: 0,
-    reactionStateKey: '',
-    reactionDisabled: false,
-    reactionPermissionWarned: false,
-  };
-  othelloGames.set(gameId, game);
-
-  try {
-    await interaction.reply({
-      content: `オセロを開始しました。AI=${difficulty}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } catch (e) {
-    if (e?.code === 10062 || e?.code === 40060) return;
-  }
-
-  const channel = interaction.channel;
-  const msg = await channel.send({ content: formatOthelloStatus(game) });
-  game.reactionMessageId = msg.id;
-  othelloMessageToGame.set(msg.id, gameId);
-  await updateReactionGame(game, channel);
 }
