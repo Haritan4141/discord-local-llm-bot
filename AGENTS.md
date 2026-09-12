@@ -23,6 +23,8 @@
 - 必要に応じて、同じ Bot の Standby モードで「メイン Bot 停止中」の固定返信を返せる
 
 ## 主要ファイル
+- YuE2組み込み: `docs/yue2-bot-integration.md`、実機検証: `docs/yue2-integration-acceptance.md`。既定YuE2 / 秒数は目安 / 独立安全上限 / metadataによる上限到達判定を維持する。
+- `src/discord/music*.mjs` : 音楽コマンド定義・ハンドラ。 `src/music/settings.mjs`, `service.mjs`, `queue-engine.mjs`, `comfy-client.mjs`, `yue2*.mjs` : 設定・共有キュー・通信・YuE2連携。
 - `index.mjs` : エントリシム。実体は `src/bot.mjs` を import するだけ
 - `src/bot.mjs` : Discord クライアントと全スラッシュコマンドハンドラ
 - `src/config.mjs` : `.env` 読込、検証、ランタイム定数 (LLM_*, SD_*, MUSIC_*, BOT_TIMEZONE など)

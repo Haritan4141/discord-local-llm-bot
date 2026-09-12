@@ -2,6 +2,12 @@
 
 Discord 上でローカル LLM (Ollama / LM Studio など) または OpenAI API と会話できるボットです。指定チャンネルだけで応答し、通常メッセージと `/chat` / `/webchat` をチャンネル単位のキューで処理します。画像添付の Vision 入力、Provider 別の Web Search、OpenAI Image API または Stable Diffusion WebUI による `/draw`、ComfyUI / ACE-Step による `/music`、座標ボタン操作の `/othello` に対応しています。ローカル GUI から `.env` 設定、Bot 起動/停止、ログ確認もできます。
 
+## YuE2 音楽生成
+
+`/music` の既定モデルはYuE2です。秒数は目安で、モデルの終了を優先して前後します（別途安全上限あり）。
+ACE-Stepは `model:ace-step` で選択できます。
+導入・LAN接続・上限到達時の扱いは [YuE2組み込み手順](docs/yue2-bot-integration.md) を参照してください。
+
 ## 主な機能
 - 指定チャンネルのみ応答 (`CHANNEL_IDS` で制限)
 - 通常メッセージと `/chat` の 1発言=1返信キュー処理

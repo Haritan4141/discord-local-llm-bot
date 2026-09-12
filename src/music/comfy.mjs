@@ -10,6 +10,7 @@ import {
 import { sleep } from '../utils/http.mjs';
 import { truncateText } from '../utils/text.mjs';
 import { formatMusicGeneratingMessage } from './messages.mjs';
+import { createComfyClient, MusicBackendError } from './comfy-client.mjs';
 
 let comfyWorkflowTemplate = null;
 let comfyWorkflowMtimeMs = 0;
@@ -223,12 +224,11 @@ export async function comfyFreeMemory() {
 
 export async function handleMusicJobComfy(job) {
   const { interaction, prompt, durationSec } = job;
+  const client = createComfyClient(COMFY_BASE_URL);
   const pollMs = Math.max(500, numEnv(ACE_POLL_MS_VALUE, 2000));
   const timeoutMs = 20 * 60 * 1000;
 
-  try {
-    await interaction.editReply(formatMusicGeneratingMessage(durationSec));
-  } catch {}
+  await interaction.editReply(formatMusicGeneratingMessage(durationSec));
 
   const template = loadComfyWorkflowTemplate();
   const workflow = cloneWorkflow(template);
@@ -240,19 +240,25 @@ export async function handleMusicJobComfy(job) {
     language: job.language,
   });
 
-  const promptId = await comfySubmitPrompt(workflow);
+  const promptId = await client.submit(workflow);
 
   const started = Date.now();
   while (true) {
     if (Date.now() - started > timeoutMs) {
-      throw new Error('music: timeout while waiting for result.');
+      throw new MusicBackendError('music: timeout while waiting for result.', 'MUSIC_RESULT_TIMEOUT');
     }
     await sleep(pollMs);
-    const history = await comfyFetchHistory(promptId);
+    const history = await client.history(promptId);
+    const entry = history?.[promptId];
+    if (entry?.status?.status_str === 'error' || entry?.status?.messages?.some(([kind]) => ['execution_error', 'execution_interrupted'].includes(kind))) {
+      throw new MusicBackendError('ACE-Step ComfyUI execution failed');
+    }
+    if (!entry?.status?.completed) continue;
     const audio = pickAudioFromHistory(history, promptId);
-    if (!audio) continue;
+    if (!audio) throw new MusicBackendError('ACE-Step completed without an audio output');
 
-    const { buf, filename } = await comfyFetchAudio(audio);
+    const buf = await client.audio(audio, Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES));
+    const filename = audio.filename;
     if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
       await interaction.editReply(
         `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`,
@@ -266,7 +272,7 @@ export async function handleMusicJobComfy(job) {
     const lyricText = (job.lyrics || '').trim();
     const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
     const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : '';
-    const header = `music: done. duration=${durationSec}s | prompt: ${prompt}${lyricLine}`;
+    const header = `🎵 音楽の生成が完了しました。model: ACE-Step | duration=${durationSec}s | prompt: ${prompt.slice(0, 1000)}${lyricLine}`;
 
     await interaction.editReply({
       content: header,
