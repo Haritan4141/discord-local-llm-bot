@@ -93,9 +93,11 @@ const ENV_SECTIONS = [
     title: 'Image Generation (/draw)',
     description: 'OpenAI Image API または AUTOMATIC1111 の画像生成設定です。',
     fields: [
-      { key: 'IMAGE_PROVIDER', label: 'Image Provider', type: 'select', options: ['openai', 'stable-diffusion'], placeholder: 'LLM Provider が OpenAI なら openai、それ以外は stable-diffusion', help: '/draw の画像生成先です。OpenAI を選ぶと gpt-image-2 を直接呼び出します。' },
-      { key: 'OPENAI_IMAGE_MODEL', label: 'OpenAI Image Model', type: 'text', placeholder: 'gpt-image-2', help: 'OpenAI Image API で使うモデルです。既定値は gpt-image-2 です。' },
-      { key: 'OPENAI_IMAGE_QUALITY', label: 'OpenAI Image Quality', type: 'select', options: ['low', 'medium', 'high', 'auto'], placeholder: 'low', help: '既定値は料金を抑えやすい low です。1024x1024 の目安は low $0.006、medium $0.053、high $0.211/枚（2026-08-02確認）です。' },
+      { key: 'IMAGE_PROVIDER', label: 'Image Provider', type: 'select', options: ['openai', 'stable-diffusion'], placeholder: 'LLM Provider が OpenAI なら openai、それ以外は stable-diffusion', help: '/draw の画像生成先です。参照画像と model 選択は OpenAI のみ対応します。' },
+      { key: 'OPENAI_IMAGE_MODEL', label: 'OpenAI Image Model (Legacy Fallback)', type: 'text', placeholder: '空欄なら各モデルの既定値', help: '旧設定との互換用。専用モデル設定が空欄なら、この値を flare / sunburst 両方で使用します。' },
+      { key: 'OPENAI_IMAGE_MODEL_FLARE', label: 'OpenAI Flare Model', type: 'text', placeholder: 'gpt-image-2.5-flare', help: '専用設定 → 旧 OpenAI Image Model → gpt-image-2.5-flare の順で解決。auto で参照画像がない場合に使用。' },
+      { key: 'OPENAI_IMAGE_MODEL_SUNBURST', label: 'OpenAI Sunburst Model', type: 'text', placeholder: 'gpt-image-2.5-sunburst', help: '専用設定 → 旧 OpenAI Image Model → gpt-image-2.5-sunburst の順で解決。auto で参照画像がある場合に使用。' },
+      { key: 'OPENAI_IMAGE_QUALITY', label: 'OpenAI Image Quality', type: 'select', options: ['low', 'medium', 'high', 'auto'], placeholder: 'low', help: '既定値は low です。料金は使用モデル・サイズ・参照画像によって変わります。' },
       { key: 'OPENAI_IMAGE_SIZE', label: 'OpenAI Default Size', type: 'text', placeholder: '1024x1024', help: '/draw で width / height を省略した場合のサイズです。各辺は16px単位です。' },
       { key: 'OPENAI_IMAGE_API_KEY', label: 'OpenAI Image API Key', type: 'password', placeholder: '空欄なら LLM_API_KEY を使います。' },
       { key: 'SD_WEBUI_URL', label: 'SD WebUI URL', type: 'url', placeholder: 'http://127.0.0.1:7860' },
@@ -189,7 +191,9 @@ function buildGuiValues(values) {
       ? 'openai'
       : 'stable-diffusion';
   }
-  if (!next.OPENAI_IMAGE_MODEL) next.OPENAI_IMAGE_MODEL = 'gpt-image-2';
+  if (!next.OPENAI_IMAGE_MODEL) next.OPENAI_IMAGE_MODEL = '';
+  if (!next.OPENAI_IMAGE_MODEL_FLARE) next.OPENAI_IMAGE_MODEL_FLARE = '';
+  if (!next.OPENAI_IMAGE_MODEL_SUNBURST) next.OPENAI_IMAGE_MODEL_SUNBURST = '';
   if (!next.OPENAI_IMAGE_QUALITY) next.OPENAI_IMAGE_QUALITY = 'low';
   if (!next.OPENAI_IMAGE_SIZE) next.OPENAI_IMAGE_SIZE = '1024x1024';
   if (!next.OPENAI_IMAGE_API_KEY) next.OPENAI_IMAGE_API_KEY = '';

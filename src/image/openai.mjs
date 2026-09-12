@@ -1,4 +1,6 @@
+import { Blob } from 'node:buffer';
 import { truncateText } from '../utils/text.mjs';
+import { assertReferenceImageCount, validateReferenceImage } from './reference-images.mjs';
 
 const DEFAULT_SIZE = '1024x1024';
 const MIN_PIXELS = 655_360;
@@ -67,6 +69,22 @@ export function buildOpenAiImagePayload({ model, prompt, size, quality = 'low', 
   };
 }
 
+export function buildOpenAiImageEditForm({ references, ...options }) {
+  if (!Array.isArray(references) || !references.length) {
+    throw new Error('OpenAI Image edits には参照画像が必要です。');
+  }
+  assertReferenceImageCount(references.length);
+  const form = new FormData();
+  const payload = buildOpenAiImagePayload(options);
+  for (const [key, value] of Object.entries(payload)) form.append(key, String(value));
+  for (const [index, reference] of references.entries()) {
+    const { data, mime } = validateReferenceImage(reference);
+    const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[mime];
+    form.append('image[]', new Blob([data], { type: mime }), `reference_${index + 1}.${extension}`);
+  }
+  return form;
+}
+
 function nonNegativeInteger(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return 0;
@@ -85,8 +103,8 @@ export function parseOpenAiImageResult(json) {
     revisedPrompts: data.map(item => String(item?.revised_prompt || '').trim()),
     usage: {
       inputTokens: nonNegativeInteger(usage.input_tokens),
-      inputTextTokens: nonNegativeInteger(usage.input_tokens_details?.text_tokens),
-      inputImageTokens: nonNegativeInteger(usage.input_tokens_details?.image_tokens),
+      inputTextTokens: nonNegativeInteger(usage.input_tokens_details?.text_tokens ?? usage.input_text_tokens),
+      inputImageTokens: nonNegativeInteger(usage.input_tokens_details?.image_tokens ?? usage.input_image_tokens),
       outputTokens: nonNegativeInteger(usage.output_tokens),
       totalTokens: nonNegativeInteger(usage.total_tokens),
     },
@@ -99,12 +117,21 @@ export function formatOpenAiImageCompletion({
   size,
   quality,
   imageCount,
+  mode,
+  referenceCount,
+  usage,
   maxPromptChars = 1000,
 }) {
   const promptText = truncateText(prompt, maxPromptChars) || '(empty)';
   return [
     `prompt: ${promptText}`,
-    `生成完了 | provider: OpenAI | model: ${model} | size: ${size} | quality: ${quality} | images: ${imageCount}`,
+    `生成完了 | provider: OpenAI | model: ${model}${mode ? ` | mode: ${mode}` : ''}` +
+      ` | size: ${size} | quality: ${quality} | images: ${imageCount}` +
+      (referenceCount == null ? '' : ` | references: ${referenceCount}`),
+    ...(usage ? [
+      `usage | input_text: ${usage.inputTextTokens} | input_image: ${usage.inputImageTokens}` +
+      ` | output: ${usage.outputTokens} | total: ${usage.totalTokens}`,
+    ] : []),
   ].join('\n');
 }
 
@@ -116,19 +143,27 @@ export async function generateOpenAiImages({
   size,
   quality,
   count,
+  references = [],
+  editsUrl = 'https://api.openai.com/v1/images/edits',
+  fetchImpl = globalThis.fetch,
   timeoutMs = 180000,
 }) {
+  const isEdit = references.length > 0;
+  const options = { model, prompt, size, quality, count };
+  const body = isEdit
+    ? buildOpenAiImageEditForm({ ...options, references })
+    : JSON.stringify(buildOpenAiImagePayload(options));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchImpl(isEdit ? editsUrl : url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...(!isEdit ? { 'Content-Type': 'application/json' } : {}),
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(buildOpenAiImagePayload({ model, prompt, size, quality, count })),
+      body,
       signal: controller.signal,
     });
 

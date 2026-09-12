@@ -2,6 +2,8 @@ import "dotenv/config";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
 import { buildMusicCommand } from "./src/discord/music-command.mjs";
 
+import { buildDrawCommand, buildReferenceCommand } from './src/discord/image-commands.mjs';
+
 const commands = [
   new SlashCommandBuilder()
     .setName("help")
@@ -69,63 +71,8 @@ const commands = [
     .setName("systemprompt-show")
     .setDescription("現在このチャンネルで有効な System Prompt を表示します。"),
 
-  new SlashCommandBuilder()
-    .setName("draw")
-    .setDescription("設定した画像生成Providerで画像を生成します。")
-    .addStringOption(option =>
-      option
-        .setName("prompt")
-        .setDescription("Prompt text")
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("width")
-        .setDescription("Image width")
-        .setRequired(false)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("height")
-        .setDescription("Image height")
-        .setRequired(false)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("steps")
-        .setDescription("Sampling steps (Stable Diffusion only)")
-        .setRequired(false)
-    )
-    .addNumberOption(option =>
-      option
-        .setName("cfg")
-        .setDescription("CFG scale (Stable Diffusion only)")
-        .setRequired(false)
-    )
-    .addStringOption(option =>
-      option
-        .setName("sampler")
-        .setDescription("Sampler name (Stable Diffusion only)")
-        .setRequired(false)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("seed")
-        .setDescription("Seed (-1 for random, Stable Diffusion only)")
-        .setRequired(false)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("batch")
-        .setDescription("Number of images (1-4)")
-        .setRequired(false)
-    )
-    .addStringOption(option =>
-      option
-        .setName("negative")
-        .setDescription("Negative prompt (Stable Diffusion only)")
-        .setRequired(false)
-    ),
+  buildDrawCommand(),
+  buildReferenceCommand(),
 
   buildMusicCommand(),
 

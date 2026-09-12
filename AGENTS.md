@@ -16,7 +16,8 @@
 - Ollama のモデル保持時間は `OLLAMA_KEEP_ALIVE` で設定。`start-ollama.bat` と Bot 起動時 preload で使用
 - `/webchat` で Ollama Web Search / Web Fetch を使った検索付き会話
 - `/systemprompt` でチャンネル単位の System Prompt 上書き、`/systemprompt-show` で現在設定を表示
-- `/draw` で OpenAI Image API (`gpt-image-2`) または Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
+- `/draw` で OpenAI Image API（Flare / Sunburst、参照画像対応）または Stable Diffusion WebUI (AUTOMATIC1111) を呼び出し
+- `/reference add|list|show|delete` で名前付き参照画像を `data/references/` に永続保存・管理
 - `/music` で ComfyUI または ACE-Step を使った音楽生成を呼び出し
 - `/othello` で座標ボタン操作のオセロ (VS AI) を開始。パス自動、投了確認、30分放置時の終了
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
@@ -47,6 +48,9 @@
 - `src/standby/config.mjs` / `src/standby/bot.mjs` : 同じ Bot を使う Standby モードの設定と本体
 - `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
 - `src/image/openai.mjs` : OpenAI Image API の画像生成、サイズ検証、レスポンス解析
+- `src/image/openai-models.mjs` : auto / flare / sunburst 選択と旧モデル設定の fallback
+- `src/image/reference-images.mjs`, `references.mjs` : 参照画像の取得・検証と manifest / 画像の永続保存
+- `src/discord/draw.mjs`, `references.mjs`, `image-commands.mjs` : `/draw` / `/reference` ハンドラとコマンド登録定義
 - `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
 - `src/othello/board.mjs` / `state.mjs` : 盤面ルール・Discordに依存しない対局進行
 - `src/othello/view.mjs` / `render.mjs` : 版・座標付きボタン、本文、PNG。必ず同じ状態スナップショットから生成
@@ -83,6 +87,9 @@
 
 ## 重要な注意
 - `.env` は機密情報を含むためコミットしない
+- `data/references/` の保存画像・manifest は Git 管理対象外。profile は全許可チャンネルで共有し、コマンド利用者は変更・削除できる
+- OpenAI参照画像は添付→保存順で合計8枚まで、PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference / model（autoも含む）は未対応
+- `OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルの順で解決する
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う
 - `LLM_TEMPERATURE` は通常チャット系の応答安定性に効く。低めほど暴走しにくい
@@ -99,4 +106,4 @@
 - UTF-8 でファイルを保存すること
 - 日本語の文字化けに注意 (特に `src/**/*.mjs`, `gui/`, `.env.example`, `README.md`)
 - GUI は起動毎にランダムな `X-GUI-Token` を発行し、`Host` / `Origin` ヘッダも検証する。改造する際は `gui/index.html` の `<meta name="gui-token">` と `gui/app.js` の `GUI_TOKEN` を維持すること
-- `npm test` で syntax check + `tests/` 配下のユニットテスト (現在 72 件) が走る。純関数を変更したら必要に応じてテストを追加する
+- `npm test` で syntax check + `tests/` 配下のテストが走る。変更した画像生成・コマンド・永続保存は外部APIとDiscordをモックして検証する
