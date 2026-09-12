@@ -391,7 +391,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (!String(OLLAMA_WEB_API_KEY_VALUE || '').trim()) {
+      if (!OPENAI_RESPONSES_ENABLED && !String(OLLAMA_WEB_API_KEY_VALUE || '').trim()) {
         await interaction.reply('`OLLAMA_WEB_API_KEY` が未設定です。GUI または .env に設定してください。');
         return;
       }
