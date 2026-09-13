@@ -44,7 +44,7 @@ SDの既存オプション・既定値・数値制限・日本語翻訳・翻訳
 
 ## Slash commandと生成仕様
 
-`/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative] [image] [reference] [model]`
+`/draw prompt [width] [height] [steps] [cfg] [sampler] [seed] [batch] [negative] [image] [reference] [reference2] ... [reference8] [model]`
 
 | mode | 参照なし | 参照あり |
 | --- | --- | --- |
@@ -52,7 +52,9 @@ SDの既存オプション・既定値・数値制限・日本語翻訳・翻訳
 | flare | Flare設定 / generations | Flare設定 / edits |
 | sunburst | Sunburst設定 / generations | Sunburst設定 / edits |
 
-`image` は添付1枚、`reference` は保存済みprofile名またはslugです。添付→profile内の保存順で合計最大8枚、PNG/JPEG/WebP・1枚20 MiB以下に制限します。`batch` は従来どおり1～4枚です。
+`image` は添付1枚、`reference`～`reference8` は保存済みprofile名またはslugです。各欄に1名を指定し、空白・カンマでは分割しません。添付→reference→reference2→…の順に各profile内の保存順で合計最大8枚、PNG/JPEG/WebP・1枚20 MiB以下に制限します。`batch` は従来どおり1～4枚です。
+
+複数profile時だけ、登録名とアップロード順の画像番号の対応をAPI向けpromptに補足します。直接添付があれば画像1として各profileの番号をずらします。単独profile・参照なしのpromptは従来どおりです。完了返信は元のユーザーpromptと複数profileの登録名一覧を表示します。全profileの検証と合計枚数確認が通るまで添付の取得・画像生成API送信を行いません。
 
 完了返信にはprompt、provider、実モデル、選択mode、size、quality、生成枚数、参照枚数、input_text / input_image / output / total tokensを表示します。
 

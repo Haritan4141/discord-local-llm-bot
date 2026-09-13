@@ -327,20 +327,23 @@ OpenAI の組織設定によっては、GPT Image モデルを使う前に Organ
 
 モデルIDの優先順位は、`OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルです。既存の `OPENAI_IMAGE_MODEL=gpt-image-2` を残すと、専用設定が空欄のモードは引き続き gpt-image-2 を使います。Flare / Sunburst に切り替える場合は上記の専用設定を指定してください。実際の使用モデルを生成結果とログに表示します。
 
-`image` は任意の画像添付1枚、`reference` は保存済み profile の名前または slug です。併用時は添付 → 保存順に全画像を送り、合計8枚を超える場合はエラーにします。PNG / JPEG / WebP、1枚20 MiB以下に限定し、MIME・実データの署名・ダウンロードサイズを検証します。
+`image` は任意の画像添付1枚、`reference` と `reference2`～`reference8` は保存済み profile の名前または slug です。1つの欄に1つの登録名を指定します。空白やカンマで複数名に分割しないため、名前自体に空白があっても使えます。添付 → reference → reference2 → … の順に各profile内の保存順で画像を送り、全画像の合計が8枚を超える場合は生成前にエラーにします。PNG / JPEG / WebP、1枚20 MiB以下に限定し、MIME・実データの署名・ダウンロードサイズを検証します。
+
+複数profileを使う場合は、登録名と画像の対応をBotがモデルへ伝えます。例えば `reference:ぽろあーく reference2:はりたん` を選び、promptで「ぽろあーくは左、はりたんは右」と指定できます。1つの登録名に複数画像があれば、その全画像を使用します。未登録・破損したprofileが1つでもあれば、画像生成リクエストを送らずにエラーにします。
 
 ```text
 /draw prompt:"このキャラクターを月面に描いて" image:<添付画像>
 /draw prompt:"月面のAkaya" reference:Akaya
+/draw prompt:"ぽろあーくとはりたんが一緒にトランプをしている" reference:ぽろあーく reference2:はりたん
 /draw prompt:"添付の構図でAkayaを描いて" image:<構図画像> reference:Akaya model:auto batch:2
 /draw prompt:"白い猫" model:sunburst width:1536 height:1024
 ```
 
-完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）を表示します。APIが返さない使用量は0として表示します。
+完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）を表示します。複数profileを指定した場合は登録名一覧も表示します。APIが返さない使用量は0として表示します。
 
 料金はモデル・品質・サイズ・参照画像・生成枚数で変わります。最新の仕様は [OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) を確認してください。
 
-`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference` / `model`（auto を含む）を指定すると、OpenAI 専用である旨を返して生成を実行しません。
+`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference`～`reference8` / `model`（auto を含む）を指定すると、OpenAI 専用である旨を返して生成を実行しません。
 
 日本語プロンプトを英語に翻訳して SD WebUI に送る場合:
 
