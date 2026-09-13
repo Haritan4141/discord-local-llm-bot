@@ -4,8 +4,9 @@ import { createDrawHandler } from '../src/discord/draw.mjs';
 import { resolveOpenAiImageModels } from '../src/image/openai-models.mjs';
 import { fetchReferenceImage } from '../src/image/reference-images.mjs';
 import { numEnv } from '../src/utils/llm-config.mjs';
+import sharp from 'sharp';
 
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=', 'base64');
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4//9/AwAJfAN+bOwQyQAAAABJRU5ErkJggg==', 'base64');
 const direct = { data: png, mime: 'image/png', originalName: 'direct.png' };
 const saved = { ...direct, originalName: 'saved.png' };
 const config = {
@@ -77,6 +78,52 @@ test('/draw old prompt/size/batch and new reference combinations reach the actua
   }
 });
 
+test('/draw sends resized attachment and profile copies through multipart while preserving output settings and originals', async () => {
+  const attachment = { data: await sharp({ create: { width: 2048, height: 1024, channels: 3, background: 'red' } }).jpeg().toBuffer(), mime: 'image/jpeg', originalName: 'direct.jpg' };
+  const profile = { data: await sharp({ create: { width: 1024, height: 2048, channels: 4, background: '#0000ff80' } }).png().toBuffer(), mime: 'image/png', originalName: 'saved.png' };
+  const copies = [Buffer.from(attachment.data), Buffer.from(profile.data)];
+  const i = interaction({ prompt: 'Draw them', image: {}, reference: 'Saved' });
+  const { generateOpenAiImages } = await import('../src/image/openai.mjs');
+  let calls = 0;
+  await createDrawHandler({ config: { ...config, OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE: 512 }, logger,
+    fetchImage: async () => attachment,
+    referenceStore: { loadImages: async () => [profile] },
+    generateImages: args => generateOpenAiImages({ ...args, fetchImpl: async (_, request) => {
+      calls++;
+      assert.equal(request.body.get('size'), '1024x1024');
+      assert.equal(request.body.get('quality'), 'low');
+      const files = request.body.getAll('image[]');
+      for (const [index, file] of files.entries()) {
+        assert.equal(file.name, `reference_${index + 1}.png`);
+        assert.equal(file.type, 'image/png');
+        const { width, height } = await sharp(Buffer.from(await file.arrayBuffer())).metadata();
+        assert.deepEqual([width, height], index ? [256, 512] : [512, 256]);
+      }
+      assert.equal(files.length, 2);
+      return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }));
+    } }),
+  })(i);
+  assert.equal(calls, 1);
+  assert.deepEqual(attachment.data, copies[0]);
+  assert.deepEqual(profile.data, copies[1]);
+  assert.match(i.replies.at(-1).content, /reference input: 512x256 \/ 256x512 px/);
+});
+
+test('/draw stops before generation when either a saved or attached image cannot be decoded', async () => {
+  const corrupt = { ...direct, data: Buffer.from('89504e470d0a1a0a', 'hex') };
+  for (const badSaved of [false, true]) {
+    const i = interaction({ prompt: 'Draw them', image: {}, reference: 'Saved' });
+    let calls = 0;
+    await createDrawHandler({ config, logger,
+      fetchImage: async () => badSaved ? direct : corrupt,
+      referenceStore: { loadImages: async () => [badSaved ? corrupt : saved] },
+      generateImages: async () => { calls++; },
+    })(i);
+    assert.equal(calls, 0);
+    assert.match(i.replies.at(-1).content, /縮小できません/);
+  }
+});
+
 test('/draw rejects missing profile, combined limit, invalid image and invalid dimensions before generation', async () => {
   const cases = [
     { values: { reference: 'missing' }, load: async () => { throw new Error('reference が見つかりません'); }, error: /見つかりません/ },
@@ -112,7 +159,8 @@ test('/draw accepts an ephemeral attachment through the real downloader and sele
       generated = true;
       assert.equal(args.model, 'gpt-image-2.5-sunburst');
       assert.equal(args.references.length, 1);
-      assert.deepEqual(args.references[0].data, png);
+      const actualPixels = await sharp(args.references[0].data).raw().toBuffer();
+      assert.deepEqual(actualPixels, await sharp(png).raw().toBuffer());
       return { images: [png.toString('base64')], usage: {} };
     },
   })(i);

@@ -8,7 +8,7 @@ import { createReferenceStore } from '../src/image/references.mjs';
 import { fetchReferenceImage } from '../src/image/reference-images.mjs';
 import { createDrawHandler } from '../src/discord/draw.mjs';
 
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=', 'base64');
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4//9/AwAJfAN+bOwQyQAAAABJRU5ErkJggg==', 'base64');
 const logger = { error() {} };
 function interaction(subcommand, values = {}) {
   const replies = [];

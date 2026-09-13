@@ -26,7 +26,7 @@ ACE-Stepは `model:ace-step` で選択できます。
 - ローカル GUI で `.env` 設定、保存、Bot 起動/停止、ログ表示
 
 ## 必要なもの
-- Node.js 18 以上 (fetch を使用)
+- Node.js 20.9.0 以上 (参照画像の縮小にsharpを使用)
 - Discord Bot トークン
 - Discord Application の `CLIENT_ID`
 - ギルドコマンド登録を使う場合は Discord サーバーの `GUILD_ID`
@@ -84,6 +84,7 @@ start-gui.bat
 - `OPENAI_IMAGE_MODEL` (互換用 fallback。専用設定が空欄の場合だけ使用)
 - `OPENAI_IMAGE_QUALITY` (`low`, `medium`, `high`, `auto`。既定値 `low`)
 - `OPENAI_IMAGE_SIZE` (`1024x1024` など。既定値 `1024x1024`)
+- `OPENAI_IMAGE_REFERENCE_MAX_EDGE` (参照画像の送信時の長辺上限。256〜2048の整数、既定値 `768`)
 - `OPENAI_IMAGE_API_KEY` (空欄なら `LLM_API_KEY` を使用)
 
 `LLM_TEMPERATURE` は 0.0 から 2.0 の範囲で指定します。低いほど安定しやすく、会話の崩れや過剰な演出を抑えやすくなります。通常用途は `0.4` を推奨します。
@@ -339,7 +340,11 @@ OpenAI の組織設定によっては、GPT Image モデルを使う前に Organ
 /draw prompt:"白い猫" model:sunburst width:1536 height:1024
 ```
 
-完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）を表示します。複数profileを指定した場合は登録名一覧も表示します。APIが返さない使用量は0として表示します。
+参照画像はAPIへの送信直前に、長辺768px以下へ縮小します。縦横比・透過・EXIFの向きを保ち、小さい画像は拡大せず、PNGとして送信します。保存済みの原本・manifestは変更しません。直接添付の`image`にも同じ制限が適用されます。壊れた画像、4,000万画素を超える入力、複数フレームのWebPは生成前にエラーにし、原寸のまま送るfallbackは行いません。
+
+`.env` の `OPENAI_IMAGE_REFERENCE_MAX_EDGE=768` で変更できます（256〜2048の整数、変更後はBot再起動）。まず768pxで確認し、特徴を保てるなら512px、細部が不足するなら1024pxを試せます。これは入力画像の上限で、生成画像の`size`や`quality`は変更しません。縮小によるトークン・料金の削減幅は保証されないため、同じ条件で生成し`input_image`を比較してください。
+
+完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）、参照画像の実際の送信解像度（reference input）を表示します。複数profileを指定した場合は登録名一覧も表示します。APIが返さない使用量は0として表示します。
 
 料金はモデル・品質・サイズ・参照画像・生成枚数で変わります。最新の仕様は [OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) を確認してください。
 

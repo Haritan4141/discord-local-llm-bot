@@ -23,6 +23,7 @@ import {
   OPENAI_IMAGE_MODELS,
   OPENAI_IMAGE_QUALITY_VALUE,
   OPENAI_IMAGE_SIZE_VALUE,
+  OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE,
   MEMBER_CONTEXT_CACHE_TTL_SECONDS_VALUE,
   MEMBER_CONTEXT_ENABLED_VALUE,
   MEMBER_CONTEXT_MAX_CHARS_VALUE,
@@ -106,6 +107,7 @@ client.once(Events.ClientReady, (readyClient) => {
     console.log(`✅ OpenAI image models: flare=${OPENAI_IMAGE_MODELS.flare} sunburst=${OPENAI_IMAGE_MODELS.sunburst}`);
     console.log(`✅ OpenAI image quality: ${OPENAI_IMAGE_QUALITY_VALUE}`);
     console.log(`✅ OpenAI image size: ${OPENAI_IMAGE_SIZE_VALUE}`);
+    console.log(`✅ OpenAI reference max edge: ${OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE}px`);
   }
   console.log(`✅ Timezone: ${BOT_TIMEZONE}`);
   if (LLM_PROVIDER_MODE === 'ollama') {
@@ -218,6 +220,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `• image models: flare=\`${OPENAI_IMAGE_MODELS.flare}\` sunburst=\`${OPENAI_IMAGE_MODELS.sunburst}\``,
                 `• image quality: \`${OPENAI_IMAGE_QUALITY_VALUE}\``,
                 `• image size: \`${OPENAI_IMAGE_SIZE_VALUE}\``,
+                `• reference max edge: \`${OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE}px\``,
               ]
             : []),
           `• ollama web search: \`${String(!!String(OLLAMA_WEB_API_KEY_VALUE || '').trim())}\``,
