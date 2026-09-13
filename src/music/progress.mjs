@@ -56,6 +56,7 @@ export function createMusicProgress({
   let lastEdit = started, current = null, phase = 'サーバーでの開始待ち・準備中';
   let stageStarted = started, connected = false, stopped = false, editing = false;
   let reliable = true, sawStart = false, cached = null, progress = null;
+  let finalizing = false;
   let lastEvent = started;
   const observations = new Map();
   const topology = Object.entries(nodes).map(([id, node]) => [id, node.class_type,
@@ -68,6 +69,7 @@ export function createMusicProgress({
 
   function setNode(id) {
     if (!nodes[id]) return;
+    finalizing = false;
     if (current !== id) {
       current = id; stageStarted = now(); progress = null;
       if (!observations.has(stageKey(id))) observations.set(stageKey(id), stageStarted);
@@ -97,6 +99,7 @@ export function createMusicProgress({
     if (type === 'executing') {
       if (data.node === null) {
         current = null; progress = null; phase = '生成結果を確認中'; stageStarted = now();
+        finalizing = true;
       } else setNode(String(data.node));
     } else if (type === 'progress') {
       const id = String(data.node);
@@ -119,16 +122,28 @@ export function createMusicProgress({
     }
     const lines = [
       `🎵 ${model === 'yue2' ? 'YuE2' : 'ACE-Step'}で音楽を生成中です（長さの目安: ${durationSec}秒${model === 'yue2' && Number.isFinite(maxDurationSec) ? ` / 安全上限: ${maxDurationSec}秒` : ''}）`,
-      `工程: ${detail}${stale && detailSupported ? '（詳細進捗の更新待ち）' : ''}`,
+      `工程: ${detail}${stale && detailSupported && !finalizing ? '（詳細進捗の更新待ち）' : ''}`,
       `経過: ${formatElapsed(at - started)}（生成処理の開始から）`,
     ];
     // Cache classification is observational, not an invented cold/warm flag.
-    const estimate = !stale && reliable && cached !== null && current
-      ? timingHistory?.estimate(key(), stageKey(current), { elapsedMs: at - stageStarted }) : null;
-    lines.push(estimate
-      ? `完了目安: あと約${formatRange(estimate)}（同条件の過去${estimate.samples}件からの推定）`
-      : detailSupported ? '完了目安: 算出中（曲の長さやモデルの読み込みで変動します）'
-        : '完了目安: この接続方式では取得できません');
+    let estimate = null, eta;
+    if (!detailSupported) eta = 'この接続方式では取得できません';
+    else if (finalizing) eta = '最終処理中（結果の確認・音声ファイルの取得／送信）';
+    else if (!reliable && connected) eta = '進捗通知の欠落により、この生成の予測は表示できません';
+    else if (stale) eta = '進捗通知の更新待ち（経過時間は更新中）';
+    else if (!current || cached === null) eta = 'サーバーの実行情報待ち（準備・条件を確認中）';
+    else {
+      const status = timingHistory?.estimateStatus?.(key(), stageKey(current), { elapsedMs: at - stageStarted });
+      if (status?.status === 'ready') {
+        estimate = status.estimate;
+        eta = `あと約${formatRange(estimate)}（同条件の過去${estimate.samples}件からの推定）`;
+      } else if (status?.status === 'collecting') {
+        eta = `実績を収集中（同条件: ${status.samples}/${status.requiredSamples}件完了）`;
+      } else if (status?.status === 'overrun') {
+        eta = '過去の実績からの予測時間を超過（生成・結果確認は継続中）';
+      } else eta = '推定に使える計測情報がありません';
+    }
+    lines.push(`完了目安: ${eta}`);
     if (!estimate && !stale && fixed && progress?.samples.length >= 3 && at - progress.at < 15000) {
       const first = progress.samples[0], last = progress.samples.at(-1);
       const elapsed = last.at - first.at, steps = last.value - first.value;
@@ -149,7 +164,9 @@ export function createMusicProgress({
       connected = value === true;
       if (!connected) { reliable = false; progress = null; }
     },
-    phase(value) { if (!stopped) { current = null; progress = null; phase = value; } },
+    phase(value, { finalizing: isFinalizing = false } = {}) {
+      if (!stopped) { current = null; progress = null; phase = value; finalizing = isFinalizing; }
+    },
     content,
     async tick() {
       if (stopped || editing || now() - lastEdit < intervalMs) return;
