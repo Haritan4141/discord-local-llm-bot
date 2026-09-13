@@ -129,11 +129,11 @@ export function createMusicProgress({
     let estimate = null, eta;
     if (!detailSupported) eta = 'この接続方式では取得できません';
     else if (finalizing) eta = '最終処理中（結果の確認・音声ファイルの取得／送信）';
+    else if (!reliable && connected) eta = '進捗通知の欠落により、この生成の予測は表示できません';
     else if (stale) eta = '進捗通知の更新待ち（経過時間は更新中）';
-    else if (!reliable) eta = '進捗通知が途中で途切れたため、この生成の予測は表示できません';
     else if (!current || cached === null) eta = 'サーバーの実行情報待ち（準備・条件を確認中）';
     else {
-      const status = timingHistory?.estimateStatus(key(), stageKey(current), { elapsedMs: at - stageStarted });
+      const status = timingHistory?.estimateStatus?.(key(), stageKey(current), { elapsedMs: at - stageStarted });
       if (status?.status === 'ready') {
         estimate = status.estimate;
         eta = `あと約${formatRange(estimate)}（同条件の過去${estimate.samples}件からの推定）`;

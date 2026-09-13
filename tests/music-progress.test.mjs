@@ -166,8 +166,12 @@ test('ETA reasons distinguish stale/missing notifications, interrupted traces, f
   h.stage('decode');
   assert.match(h.p.content(), /実績を収集中/);
   h.p.onConnection(false); h.p.onConnection(true);
-  assert.match(h.p.content(), /進捗通知が途中で途切れたため/);
+  assert.match(h.p.content(), /進捗通知の欠落により/);
   assert.doesNotMatch(h.p.content(), /実績を収集中/);
+  h.at(70000);
+  assert.match(h.p.content(), /完了目安: 進捗通知の欠落により/); // An older trace never becomes usable after reconnect.
+  h.p.onConnection(false);
+  assert.match(h.p.content(), /完了目安: 進捗通知の更新待ち/); // Currently disconnected, not a server error.
   h.stage(null); h.at(100000);
   assert.match(h.p.content(), /完了目安: 最終処理中/);
   assert.doesNotMatch(h.p.content(), /更新待ち|実績を収集中/);
@@ -196,4 +200,5 @@ test('total ETA overrun is explicit while missing timing history is not reported
   assert.match(h.p.content(), /予測時間を超過/);
   assert.doesNotMatch(h.p.content(), /あと約|算出中|実績を収集中/);
   assert.match(make(null).p.content(), /推定に使える計測情報がありません/);
+  assert.match(make({}).p.content(), /推定に使える計測情報がありません/);
 });
