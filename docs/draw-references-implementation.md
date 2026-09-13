@@ -52,7 +52,7 @@ SDの既存オプション・既定値・数値制限・日本語翻訳・翻訳
 | flare | Flare設定 / generations | Flare設定 / edits |
 | sunburst | Sunburst設定 / generations | Sunburst設定 / edits |
 
-`image` は添付1枚、`reference`～`reference8` は保存済みprofile名またはslugです。各欄に1名を指定し、空白・カンマでは分割しません。添付→reference→reference2→…の順に各profile内の保存順で合計最大8枚、PNG/JPEG/WebP・1枚20 MiB以下に制限します。`batch` は従来どおり1～4枚です。
+`image` は添付1枚、`reference`～`reference8` は画像1枚を保存したprofile名またはslugです。各欄に1名を指定し、空白・カンマでは分割しません。添付→reference→reference2→…の順に合計最大8枚、PNG/JPEG/WebP・1枚20 MiB以下に制限します。`batch` は従来どおり1～4枚です。
 
 複数profile時だけ、登録名とアップロード順の画像番号の対応をAPI向けpromptに補足します。直接添付があれば画像1として各profileの番号をずらします。単独profile・参照なしのpromptは従来どおりです。完了返信は元のユーザーpromptと複数profileの登録名一覧を表示します。全profileの検証と合計枚数確認が通るまで添付の取得・画像生成API送信を行いません。
 
@@ -61,8 +61,7 @@ SDの既存オプション・既定値・数値制限・日本語翻訳・翻訳
 ## referenceの操作
 
 ```text
-/reference add name:Akaya image:<画像1> image2:<画像2>
-/reference add name:Akaya image:<追加画像>
+/reference add name:Akaya image:<画像1>
 /reference add name:Akaya image:<新画像> replace:true
 /reference list
 /reference show name:akaya
@@ -70,7 +69,9 @@ SDの既存オプション・既定値・数値制限・日本語翻訳・翻訳
 /reference delete name:Akaya
 ```
 
-addは最大4添付を1回で登録し、未指定時は追加、replace:trueで全置換します。1 profile最大8枚です。displayNameは新規登録の入力を保持し、slugは内部識別子として安全に正規化します。保存先は `<ProjectRoot>/data/references/<slug>/`、画像と `manifest.json` を再起動後にも読み込めます。
+addは1登録名に画像1枚だけを保存します。同名は既定で拒否し、replace:trueで明示的に置換します。古いコマンド候補のimage2～image4はダウンロード・保存前に拒否します。displayNameは新規登録の入力を保持し、slugは内部識別子として安全に正規化します。保存先は `<ProjectRoot>/data/references/<slug>/`、画像と `manifest.json` を再起動後にも読み込めます。
+
+既存manifestの読み取り形式は保持し、旧複数枚profileをlist/showで調査できます。loadImagesは複数枚のままのprofileを拒否し、意図しない追加画像のAPI送信を防ぎます。移行はバックアップ後に残す画像を選び、replace:trueで1枚へ明示的に置換します。Bot起動時には保存画像を変更しません。
 
 listはdisplay name / slug / image count / updatedAt、showはcreatedAtと各画像のfilename / originalName / sizeも表示します。削除対象がない場合はエラーです。全許可チャンネルで共有するため、利用者は共通profileを追加・置換・削除できます。
 

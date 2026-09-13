@@ -85,13 +85,10 @@ export function buildReferenceCommand() {
     .setName("reference")
     .setDescription("名前付きの参照画像を保存・管理します。")
     .addSubcommand(command => command
-      .setName("add").setDescription("参照画像を登録・追加・置換します（各 profile 最大8枚）。")
+      .setName("add").setDescription("名前に参照画像を1枚登録します。変更時は replace: true。")
       .addStringOption(option => option.setName("name").setDescription("Profile 名").setRequired(true).setMaxLength(100))
       .addAttachmentOption(option => option.setName("image").setDescription("参照画像 png/jpeg/webp").setRequired(true))
-      .addAttachmentOption(option => option.setName("image2").setDescription("参照画像2 png/jpeg/webp"))
-      .addAttachmentOption(option => option.setName("image3").setDescription("参照画像3 png/jpeg/webp"))
-      .addAttachmentOption(option => option.setName("image4").setDescription("参照画像4 png/jpeg/webp"))
-      .addBooleanOption(option => option.setName("replace").setDescription("true で既存画像をすべて置換（既定は追加）")))
+      .addBooleanOption(option => option.setName("replace").setDescription("true で登録済みの画像を置換（未指定では上書きしません）")))
     .addSubcommand(command => command.setName("list").setDescription("保存済み profile の一覧を表示します。"))
     .addSubcommand(command => command
       .setName("show").setDescription("Profile と各画像の情報を表示します。")

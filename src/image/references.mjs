@@ -24,7 +24,7 @@ const WINDOWS_RESERVED_NAMES = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 const PROFILE_TEMP_PREFIXES = ['.staging-', '.backup-', '.deleting-'];
 
 // All stores in this process share a queue by canonical configured root. This
-// prevents two independently-created store instances from losing appends.
+// prevents two independently-created store instances from overwriting a create.
 const operationQueues = new Map();
 
 function queueKey(rootDir) {
@@ -480,8 +480,8 @@ async function commitStage(rootInfo, slug, stageDir) {
 }
 
 function validateIncomingImages(images) {
-  if (!Array.isArray(images) || images.length < 1) {
-    throw new Error('At least one reference image is required.');
+  if (!Array.isArray(images) || images.length !== 1) {
+    throw new Error('1つの reference に登録できる画像は1枚です。');
   }
   return images.map(image => validateReferenceImage(image));
 }
@@ -514,15 +514,10 @@ export function createReferenceStore({ rootDir = defaultRootDir() } = {}) {
         }
 
         const incoming = validateIncomingImages(images);
-        const priorImages = existing && !replace ? await readStoredImages(rootInfo, existing) : [];
-        assertReferenceImageCount(priorImages.length + incoming.length);
-        const imageEntries = [
-          ...priorImages.map(entry => ({
-            metadata: entry.metadata,
-            image: entry.image,
-          })),
-          ...incoming.map(image => ({ image })),
-        ];
+        if (existing && !replace) {
+          throw new Error('同じ名前の reference は登録済みです。画像を変更する場合は replace: true を指定してください。');
+        }
+        const imageEntries = incoming.map(image => ({ image }));
         const now = new Date().toISOString();
         const staged = await writeManifestStage(rootInfo, existing?.manifest.slug || slug, {
           displayName: existing?.manifest.displayName || displayName,
@@ -561,6 +556,9 @@ export function createReferenceStore({ rootDir = defaultRootDir() } = {}) {
         const rootInfo = await ensureRoot(configuredRoot);
         const record = await resolveExisting(rootInfo, name);
         if (!record) throw new Error(`Reference profile not found: ${stringName(name)}`);
+        if (record.manifest.images.length !== 1) {
+          throw new Error('この reference は旧形式で複数画像が登録されています。/reference add の replace: true で画像1枚に置き換えてください。');
+        }
         const stored = await readStoredImages(rootInfo, record);
         return stored.map(entry => entry.image);
       });

@@ -25,13 +25,13 @@ export function createReferenceHandler({ store, fetchImage = fetchReferenceImage
 
       const name = interaction.options.getString('name', true);
       if (subcommand === 'add') {
-        const attachments = [interaction.options.getAttachment('image', true)];
+        // Reject stale cached commands instead of silently dropping attachments.
         for (const key of ['image2', 'image3', 'image4']) {
-          const image = interaction.options.getAttachment(key);
-          if (image) attachments.push(image);
+          if (interaction.options.getAttachment(key)) {
+            throw new Error('1つの reference に登録できる画像は1枚です。image のみ指定してください。');
+          }
         }
-        const images = [];
-        for (const attachment of attachments) images.push(await fetchImage(attachment));
+        const images = [await fetchImage(interaction.options.getAttachment('image', true))];
         const replace = interaction.options.getBoolean('replace') === true;
         const profile = await store.add(name, images, { replace });
         await sendResult(interaction,

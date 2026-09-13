@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { createReferenceStore, slugifyReferenceName } from '../src/image/references.mjs';
 
@@ -53,23 +54,21 @@ test('reference store supports add/list/show/load after a fresh store instance',
   });
 });
 
-test('reference store accepts eight images and preserves an eight-image profile when replace overflows', async () => {
+test('reference store rejects multiple-image creates and replacements without changing saved data', async () => {
   await withRoot(async root => {
     const store = createReferenceStore({ rootDir: root });
-    const eight = await store.add('profile', Array.from({ length: 8 }, (_, index) => (
-      image(index % 2 ? JPEG : PNG, index % 2 ? 'image/jpeg' : 'image/png', `image-${index + 1}.png`)
-    )));
-    assert.equal(eight.images.length, 8);
+    for (const count of [0, 2, 8, 9]) {
+      await assert.rejects(store.add('new', Array.from({ length: count }, () => image(PNG, 'image/png', 'a.png'))), /1枚/);
+      assert.deepEqual(await store.list(), []);
+    }
+    await store.add('profile', [image(PNG, 'image/png', 'original.png')]);
     const beforeOverflow = await store.show('profile');
     const beforeFiles = await Promise.all(beforeOverflow.images.map(item =>
       readFile(path.join(root, beforeOverflow.slug, item.filename))));
 
-    await assert.rejects(
-      store.add('profile', Array.from({ length: 9 }, (_, index) => (
-        image(PNG, 'image/png', `overflow-${index + 1}.png`)
-      )), { replace: true }),
-      /最大|8/,
-    );
+    for (const count of [0, 2, 8, 9]) {
+      await assert.rejects(store.add('profile', Array.from({ length: count }, () => image(PNG, 'image/png', 'new.png')), { replace: true }), /1枚/);
+    }
     assert.deepEqual(await store.show('profile'), beforeOverflow);
     const afterFiles = await Promise.all(beforeOverflow.images.map(item =>
       readFile(path.join(root, beforeOverflow.slug, item.filename))));
@@ -77,12 +76,13 @@ test('reference store accepts eight images and preserves an eight-image profile 
 
     await assert.rejects(
       store.add('profile', [image(PNG, 'image/png', 'overflow-append.png')], { replace: false }),
-      /最大|8/,
+      /登録済み.*replace: true/,
     );
+    assert.deepEqual(await store.show('profile'), beforeOverflow);
   });
 });
 
-test('normalized/case variants cannot overwrite a profile, while an exact slug alias appends', async () => {
+test('normalized/case variants cannot overwrite and exact slug aliases require explicit replacement', async () => {
   await withRoot(async root => {
     const store = createReferenceStore({ rootDir: root });
     const created = await store.add('Akaya', [image(PNG, 'image/png', 'one.png')]);
@@ -91,9 +91,12 @@ test('normalized/case variants cannot overwrite a profile, while an exact slug a
       /collides|slug/i,
     );
     assert.deepEqual(await store.show('Akaya'), created);
-    const appended = await store.add('akaya', [image(JPEG, 'image/jpeg', 'two.jpg')]);
-    assert.equal(appended.images.length, 2);
-    assert.equal((await store.loadImages('akaya'))[1].originalName, 'two.jpg');
+    await assert.rejects(store.add('akaya', [image(JPEG, 'image/jpeg', 'two.jpg')]), /登録済み.*replace: true/);
+    assert.deepEqual(await store.show('Akaya'), created);
+    const replaced = await store.add('akaya', [image(JPEG, 'image/jpeg', 'two.jpg')], { replace: true });
+    assert.equal(replaced.images.length, 1);
+    assert.equal(replaced.displayName, 'Akaya');
+    assert.equal((await store.loadImages('akaya'))[0].originalName, 'two.jpg');
   });
 });
 
@@ -189,20 +192,51 @@ test('reference store rejects profile symlink/junctions and deletes safely', asy
   });
 });
 
-test('reference store serializes concurrent appends across store instances', async () => {
+test('reference store serializes concurrent creates and replacements without growing a profile', async () => {
   await withRoot(async root => {
     const first = createReferenceStore({ rootDir: root });
     const second = createReferenceStore({ rootDir: root });
-    await first.add('concurrent', [image(PNG, 'image/png', 'base.png')]);
-    await Promise.all([
+    const results = await Promise.allSettled([
       first.add('concurrent', [image(PNG, 'image/png', 'one.png')]),
       second.add('concurrent', [image(JPEG, 'image/jpeg', 'two.jpg')]),
     ]);
+    assert.deepEqual(results.map(result => result.status), ['fulfilled', 'rejected']);
+    assert.match(results[1].reason.message, /登録済み/);
     const manifest = await first.show('concurrent');
-    assert.equal(manifest.images.length, 3);
+    assert.equal(manifest.images.length, 1);
     assert.deepEqual(
       (await first.loadImages('concurrent')).map(item => item.originalName),
-      ['base.png', 'one.png', 'two.jpg'],
+      ['one.png'],
     );
+    await Promise.all([
+      first.add('concurrent', [image(PNG, 'image/png', 'replacement.png')], { replace: true }),
+      second.add('concurrent', [image(JPEG, 'image/jpeg', 'last.jpg')], { replace: true }),
+    ]);
+    assert.deepEqual((await first.loadImages('concurrent')).map(item => item.originalName), ['last.jpg']);
+  });
+});
+
+test('legacy eight-image profiles remain inspectable but cannot generate until replaced with one image', async () => {
+  await withRoot(async root => {
+    const store = createReferenceStore({ rootDir: root });
+    const legacy = await store.add('legacy', [image(PNG, 'image/png', 'first.png')]);
+    const profileDir = path.join(root, legacy.slug);
+    for (let index = 2; index <= 8; index++) {
+      const filename = `legacy-${index}.jpg`;
+      await writeFile(path.join(profileDir, filename), JPEG);
+      legacy.images.push({ id: `legacy-${index}`, filename, originalName: filename, mime: 'image/jpeg', size: JPEG.length, sha256: createHash('sha256').update(JPEG).digest('hex') });
+    }
+    const manifestPath = path.join(profileDir, 'manifest.json');
+    await writeFile(manifestPath, JSON.stringify(legacy));
+    assert.deepEqual(await store.show('legacy'), legacy);
+    assert.equal((await store.list())[0].images.length, 8);
+    await assert.rejects(store.loadImages('legacy'), /旧形式.*replace: true/);
+    await assert.rejects(store.add('legacy', [image(PNG, 'image/png', 'append.png')]), /登録済み/);
+    await assert.rejects(store.add('legacy', [image(PNG, 'image/png', 'a.png'), image(JPEG, 'image/jpeg', 'b.jpg')], { replace: true }), /1枚/);
+    assert.deepEqual(await store.show('legacy'), legacy);
+    for (const item of legacy.images) assert.equal((await readFile(path.join(profileDir, item.filename))).length, item.size);
+    await store.add('legacy', [image(JPEG, 'image/jpeg', 'selected.jpg')], { replace: true });
+    assert.deepEqual((await store.loadImages('legacy')).map(item => item.originalName), ['selected.jpg']);
+    for (const item of legacy.images) await assert.rejects(readFile(path.join(profileDir, item.filename)), { code: 'ENOENT' });
   });
 });

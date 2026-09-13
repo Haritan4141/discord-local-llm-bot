@@ -89,7 +89,8 @@
 ## 重要な注意
 - `.env` は機密情報を含むためコミットしない
 - `data/references/` の保存画像・manifest は Git 管理対象外。profile は全許可チャンネルで共有し、コマンド利用者は変更・削除できる
-- OpenAI参照画像は添付→reference→reference2～reference8の順で各profile内の保存順、全画像合計8枚まで。1欄1登録名で空白分割しない。PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference～reference8 / model（autoも含む）は未対応
+- referenceは1登録名に画像1枚。同名への再登録は拒否し、replace:trueでのみ置換。旧複数枚profileはlist/showで調査できるがdrawには使えず、バックアップ後に残す画像を明示して移行する。自動削除・自動移行はしない
+- OpenAI参照画像は添付→reference→reference2～reference8の順で全画像合計8枚まで。1欄1登録名で空白分割しない。PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference～reference8 / model（autoも含む）は未対応
 - `OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルの順で解決する
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う
