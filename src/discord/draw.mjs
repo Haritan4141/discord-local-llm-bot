@@ -4,6 +4,7 @@ import { translatePromptForSd, sdTxt2Img } from '../sd/draw.mjs';
 import { formatOpenAiImageCompletion, generateOpenAiImages, resolveOpenAiImageSize } from '../image/openai.mjs';
 import { resolveOpenAiImageModel } from '../image/openai-models.mjs';
 import { assertReferenceImageCount, fetchReferenceImage } from '../image/reference-images.mjs';
+import { DRAW_REFERENCE_OPTION_NAMES, addReferenceProfileLabels } from '../image/draw-references.mjs';
 import { truncateText } from '../utils/text.mjs';
 
 export function createDrawHandler({
@@ -36,11 +37,13 @@ export function createDrawHandler({
     const batchOpt = interaction.options.getInteger('batch');
     const negativeOpt = interaction.options.getString('negative');
     const image = interaction.options.getAttachment('image');
-    const reference = interaction.options.getString('reference');
+    const referenceNames = DRAW_REFERENCE_OPTION_NAMES
+      .map(name => interaction.options.getString(name))
+      .filter(name => name != null);
     const modelOpt = interaction.options.getString('model');
 
-    if (config.IMAGE_PROVIDER_MODE !== 'openai' && (image || reference != null || modelOpt != null)) {
-      await interaction.reply('image / reference / model (auto・flare・sunburst) は現在 OpenAI image provider のみ対応しています。');
+    if (config.IMAGE_PROVIDER_MODE !== 'openai' && (image || referenceNames.length || modelOpt != null)) {
+      await interaction.reply('image / reference～reference8 / model (auto・flare・sunburst) は現在 OpenAI image provider のみ対応しています。');
       return;
     }
 
@@ -56,8 +59,14 @@ export function createDrawHandler({
           configuredSize: config.OPENAI_IMAGE_SIZE_VALUE,
         });
         const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : 1, 1, 4);
-        const references = reference == null ? [] : await referenceStore.loadImages(reference);
-        assertReferenceImageCount(references.length + (image ? 1 : 0));
+        const references = [];
+        const referenceGroups = [];
+        for (const name of referenceNames) {
+          const profileImages = await referenceStore.loadImages(name);
+          assertReferenceImageCount(references.length + profileImages.length + (image ? 1 : 0));
+          referenceGroups.push({ name, firstImage: references.length + (image ? 1 : 0) + 1, imageCount: profileImages.length });
+          references.push(...profileImages);
+        }
         if (image) references.unshift(await fetchImage(image));
         const { model, mode } = resolveOpenAiImageModel({
           mode: modelOpt,
@@ -69,7 +78,7 @@ export function createDrawHandler({
           editsUrl: config.OPENAI_IMAGE_EDITS_URL,
           apiKey: config.OPENAI_IMAGE_API_KEY_VALUE,
           model,
-          prompt,
+          prompt: addReferenceProfileLabels(prompt, referenceGroups, Boolean(image)),
           size,
           quality: config.OPENAI_IMAGE_QUALITY_VALUE,
           count: finalBatch,
@@ -106,6 +115,7 @@ export function createDrawHandler({
           quality: config.OPENAI_IMAGE_QUALITY_VALUE,
           imageCount: files.length,
           referenceCount: references.length,
+          referenceNames,
           usage,
         });
         await interaction.editReply({
