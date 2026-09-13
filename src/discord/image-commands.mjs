@@ -1,7 +1,8 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { DRAW_REFERENCE_OPTION_NAMES } from '../image/draw-references.mjs';
 
 export function buildDrawCommand() {
-  return new SlashCommandBuilder()
+  const command = new SlashCommandBuilder()
     .setName("draw")
     .setDescription("設定した画像生成Providerで画像を生成します。")
     .addStringOption(option =>
@@ -60,11 +61,16 @@ export function buildDrawCommand() {
     )
     .addAttachmentOption(option =>
       option.setName("image").setDescription("参照画像 png/jpeg/webp (OpenAI only)").setRequired(false)
-    )
-    .addStringOption(option =>
-      option.setName("reference").setDescription("保存済み reference の名前または slug (OpenAI only)").setRequired(false)
-    )
-    .addStringOption(option =>
+    );
+  for (const [index, name] of DRAW_REFERENCE_OPTION_NAMES.entries()) {
+    command.addStringOption(option => option
+      .setName(name)
+      .setDescription(index === 0
+        ? "保存済み reference の名前または slug (OpenAI only)"
+        : `追加reference ${index + 1} の名前または slug（全参照画像合計8枚まで、OpenAI only）`)
+      .setRequired(false));
+  }
+  return command.addStringOption(option =>
       option.setName("model").setDescription("画像モデル (OpenAI only、未指定は auto)")
         .addChoices(
           { name: "auto", value: "auto" },

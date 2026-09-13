@@ -10,7 +10,11 @@ test('draw schema preserves existing options and adds optional image/reference/m
     ['cfg', 10, false], ['sampler', 3, false], ['seed', 4, false], ['batch', 4, false], ['negative', 3, false],
     ['image', 11, false],
   ]);
-  assert.deepEqual(command.options.slice(10).map(option => [option.name, option.type, !!option.required]), [['reference', 3, false], ['model', 3, false]]);
+  assert.deepEqual(command.options.slice(10).map(option => [option.name, option.type, !!option.required]), [
+    ['reference', 3, false], ['reference2', 3, false], ['reference3', 3, false], ['reference4', 3, false],
+    ['reference5', 3, false], ['reference6', 3, false], ['reference7', 3, false], ['reference8', 3, false], ['model', 3, false],
+  ]);
+  assert.equal(command.options.length, 19);
   assert.deepEqual(command.options.at(-1).choices.map(choice => choice.value), ['auto', 'flare', 'sunburst']);
 });
 

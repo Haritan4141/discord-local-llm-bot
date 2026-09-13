@@ -49,6 +49,7 @@
 - `src/sd/draw.mjs` : Stable Diffusion txt2img と日本語プロンプト翻訳
 - `src/image/openai.mjs` : OpenAI Image API の画像生成、サイズ検証、レスポンス解析
 - `src/image/openai-models.mjs` : auto / flare / sunburst 選択と旧モデル設定の fallback
+- `src/image/draw-references.mjs` : 複数profile指定用のoption名と、登録名・画像順の対応をモデルへ渡すprompt補足
 - `src/image/reference-images.mjs`, `references.mjs` : 参照画像の取得・検証と manifest / 画像の永続保存
 - `src/discord/draw.mjs`, `references.mjs`, `image-commands.mjs` : `/draw` / `/reference` ハンドラとコマンド登録定義
 - `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
@@ -88,7 +89,7 @@
 ## 重要な注意
 - `.env` は機密情報を含むためコミットしない
 - `data/references/` の保存画像・manifest は Git 管理対象外。profile は全許可チャンネルで共有し、コマンド利用者は変更・削除できる
-- OpenAI参照画像は添付→保存順で合計8枚まで、PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference / model（autoも含む）は未対応
+- OpenAI参照画像は添付→reference→reference2～reference8の順で各profile内の保存順、全画像合計8枚まで。1欄1登録名で空白分割しない。PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference～reference8 / model（autoも含む）は未対応
 - `OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルの順で解決する
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う

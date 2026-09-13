@@ -120,9 +120,128 @@ test('/draw accepts an ephemeral attachment through the real downloader and sele
   assert.equal(i.replies.at(-1).files.length, 1);
 });
 
+test('/draw combines named profiles in option order and sends name-to-image labels with the edit request', async () => {
+  const alice = [
+    { ...saved, originalName: 'alice-front.png' },
+    { ...saved, originalName: 'alice-back.png' },
+  ];
+  const bob = [{ ...saved, originalName: 'bob.png' }];
+  const profiles = new Map([['Alice Smith', alice], ['Bob, Jr.', bob]]);
+  const prompt = 'Alice Smith and Bob, Jr. are playing cards.';
+  for (const values of [
+    { reference: 'Alice Smith', reference2: 'Bob, Jr.' },
+    { reference: 'Alice Smith', reference3: 'Bob, Jr.', image: { name: 'direct.png' }, model: 'flare' },
+    { reference2: 'Bob, Jr.' },
+    { reference8: 'Bob, Jr.' },
+  ]) {
+    const i = interaction({ prompt, ...values });
+    const names = ['reference', 'reference2', 'reference3', 'reference8'].map(key => values[key]).filter(Boolean);
+    const loaded = [];
+    let apiCalls = 0;
+    const expectedImages = [...(values.image ? [direct] : []), ...names.flatMap(name => profiles.get(name))];
+    const { generateOpenAiImages } = await import('../src/image/openai.mjs');
+    await createDrawHandler({ config, logger,
+      referenceStore: { async loadImages(name) { loaded.push(name); return profiles.get(name); } },
+      fetchImage: async () => direct,
+      generateImages: args => {
+        assert.deepEqual(args.references.map(image => image.originalName), expectedImages.map(image => image.originalName));
+        return generateOpenAiImages({ ...args, fetchImpl: async (url, request) => {
+          apiCalls++;
+          assert.equal(url, config.OPENAI_IMAGE_EDITS_URL);
+          const form = request.body;
+          assert.equal(form.getAll('image[]').length, expectedImages.length);
+          assert.equal(form.get('model'), `gpt-image-2.5-${values.model || 'sunburst'}`);
+          if (names.length === 1) {
+            assert.equal(form.get('prompt'), prompt);
+          } else {
+            const offset = values.image ? 1 : 0;
+            assert.ok(form.get('prompt').includes(`Images ${1 + offset}-${2 + offset}: reference profile "Alice Smith".`));
+            assert.ok(form.get('prompt').includes(`Image ${3 + offset}: reference profile "Bob, Jr.".`));
+            if (values.image) assert.ok(form.get('prompt').includes('Image 1: directly attached image.'));
+            assert.ok(form.get('prompt').endsWith(`User request:\n${prompt}`));
+          }
+          return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }));
+        } });
+      },
+    })(i);
+    assert.equal(apiCalls, 1);
+    assert.deepEqual(loaded, names);
+    assert.equal(i.replies.at(-1).files.length, 1);
+    assert.ok(i.replies.at(-1).content.startsWith(`prompt: ${prompt}\n`));
+    if (names.length > 1) assert.ok(i.replies.at(-1).content.includes('reference profiles: "Alice Smith" / "Bob, Jr."'));
+    assert.deepEqual(i.replies.at(-1).allowedMentions, { parse: [] });
+  }
+});
+
+test('/draw applies the eight-image cap across all profiles and the direct attachment before external calls', async () => {
+  for (const { counts, image, accepted } of [
+    { counts: [4, 4], image: false, accepted: true },
+    { counts: [3, 4], image: true, accepted: true },
+    { counts: [4, 4], image: true, accepted: false },
+    { counts: Array(8).fill(1), image: false, accepted: true },
+    { counts: Array(8).fill(1), image: true, accepted: false },
+  ]) {
+    const values = Object.fromEntries(counts.map((_, index) => [index ? `reference${index + 1}` : 'reference', `Person ${index}`]));
+    const i = interaction({ prompt: 'Group photo', ...values, ...(image ? { image: {} } : {}) });
+    let apiCalls = 0;
+    let downloads = 0;
+    await createDrawHandler({ config, logger,
+      referenceStore: { async loadImages(name) { return Array(counts[Number(name.split(' ')[1])]).fill(saved); } },
+      fetchImage: async () => { downloads++; return direct; },
+      generateImages: async args => {
+        apiCalls++;
+        assert.equal(args.references.length, 8);
+        return { images: [png.toString('base64')], usage: {} };
+      },
+    })(i);
+    assert.equal(apiCalls, accepted ? 1 : 0);
+    assert.equal(downloads, accepted && image ? 1 : 0);
+    if (!accepted) assert.match(i.replies.at(-1).content, /最大8枚/);
+  }
+});
+
+test('/draw aborts the whole request when a later profile is missing or corrupt', async () => {
+  for (const failure of ['Reference profile not found', 'Stored reference image hash mismatch']) {
+    const i = interaction({ prompt: 'Group photo', reference: 'Good', reference2: 'Bad', image: {} });
+    const loaded = [];
+    let externalCalls = 0;
+    await createDrawHandler({ config, logger,
+      referenceStore: { async loadImages(name) {
+        loaded.push(name);
+        if (name === 'Bad') throw new Error(failure);
+        return [saved];
+      } },
+      fetchImage: async () => { externalCalls++; return direct; },
+      generateImages: async () => { externalCalls++; },
+    })(i);
+    assert.deepEqual(loaded, ['Good', 'Bad']);
+    assert.equal(externalCalls, 0);
+    assert.ok(i.replies.at(-1).content.includes(failure));
+  }
+});
+
+test('/draw keeps long multi-profile replies within the Discord message limit', async () => {
+  const names = Array.from({ length: 8 }, (_, index) => `${index} ${'長い名前'.repeat(20)}`);
+  const values = Object.fromEntries(names.map((name, index) => [index ? `reference${index + 1}` : 'reference', name]));
+  const i = interaction({ prompt: 'Describe the group. '.repeat(200), ...values });
+  await createDrawHandler({ config, logger,
+    referenceStore: { async loadImages() { return [saved]; } },
+    generateImages: async () => ({ images: [png.toString('base64')], usage: {} }),
+  })(i);
+  const reply = i.replies.at(-1);
+  assert.equal(reply.files.length, 1);
+  assert.ok(reply.content.length <= 2000);
+  assert.match(reply.content, /reference profiles:/);
+  assert.deepEqual(reply.allowedMentions, { parse: [] });
+});
+
 test('SD rejects all explicitly supplied OpenAI options including auto before downloading or generating', async () => {
   for (const provider of ['stable-diffusion', 'sd']) {
-    for (const values of [{ image: {} }, { reference: 'Akaya' }, { model: 'auto' }, { model: 'flare' }, { model: 'sunburst' }]) {
+    for (const values of [
+      { image: {} }, { reference: 'Akaya' },
+      ...Array.from({ length: 7 }, (_, index) => ({ [`reference${index + 2}`]: 'Akaya' })),
+      { model: 'auto' }, { model: 'flare' }, { model: 'sunburst' },
+    ]) {
       const i = interaction({ prompt: 'cat', ...values });
       const forbidden = async () => { assert.fail('must not contact providers or storage'); };
       await createDrawHandler({ config: { ...config, IMAGE_PROVIDER_MODE: provider }, logger,
