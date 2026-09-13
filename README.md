@@ -373,6 +373,14 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 新オプションをDiscordへ反映するには、Botコードの更新後にGUIの `Register Guild Commands` / `Register Global Commands`、または `npm run register:guild` / `npm run register:global` を実行してください。稼働中Botには通常の停止・起動でコードと設定を反映します。
 
 ## `/music` 例
+
+生成中は同じ返信に工程・経過時間を表示し、約5秒以上の間隔で更新します。音声生成の固定ステップには**工程内の進捗％**と、計測できた場合の**この工程の残り時間（推定）**が表示されます。YuE2の作曲・曲構成は可変長なので、曲全体の完成率は表示しません。
+
+**完了までの目安**は、同じサーバー・モデル・workflow設定・指定秒数・観測キャッシュ状態の成功実績が3件以上ある場合に範囲で表示します。初回・実績不足・予測超過時は「算出中」です。推定値は曲の長さやモデルの読み込み等で変わります。進捗通知が途切れても、音声の生成と結果取得は継続します。
+
+所要時間の集計はBot側の `data/music-timings.json` に保存され、再起動後も利用します。プロンプト・歌詞・Discordユーザー情報は含みません。旧 `MUSIC_BACKEND=ace` の独立APIは工程内進捗が非対応のため、経過時間のみを表示します。この表示機能のための追加設定・コマンド再登録・YuE2サーバー更新は不要です。
+
+詳しい制約と検証は [音楽進捗表示](docs/music-progress-implementation.md) を参照してください。
 ```text
 /music prompt:"j-pop vocal, pop rock" duration:120 lyrics:"test" bpm:120 language:ja
 ```

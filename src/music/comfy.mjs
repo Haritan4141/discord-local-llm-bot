@@ -11,6 +11,7 @@ import { sleep } from '../utils/http.mjs';
 import { truncateText } from '../utils/text.mjs';
 import { formatMusicGeneratingMessage } from './messages.mjs';
 import { createComfyClient, MusicBackendError } from './comfy-client.mjs';
+import { observeMusicProgress } from './progress.mjs';
 
 let comfyWorkflowTemplate = null;
 let comfyWorkflowMtimeMs = 0;
@@ -222,15 +223,19 @@ export async function comfyFreeMemory() {
   }
 }
 
-export async function handleMusicJobComfy(job) {
+export async function handleMusicJobComfy(job, {
+  client = createComfyClient(COMFY_BASE_URL),
+  sleepImpl = sleep, now = Date.now,
+  loadTemplate = loadComfyWorkflowTemplate,
+  timeoutMs = 20 * 60 * 1000,
+  timingHistory,
+} = {}) {
   const { interaction, prompt, durationSec } = job;
-  const client = createComfyClient(COMFY_BASE_URL);
   const pollMs = Math.max(500, numEnv(ACE_POLL_MS_VALUE, 2000));
-  const timeoutMs = 20 * 60 * 1000;
 
   await interaction.editReply(formatMusicGeneratingMessage(durationSec));
 
-  const template = loadComfyWorkflowTemplate();
+  const template = loadTemplate();
   const workflow = cloneWorkflow(template);
   updateWorkflowForMusic(workflow, {
     prompt,
@@ -240,44 +245,53 @@ export async function handleMusicJobComfy(job) {
     language: job.language,
   });
 
-  const promptId = await client.submit(workflow);
+  const progress = await observeMusicProgress(client, {
+    interaction, workflow, model: 'ace-step', durationSec, baseUrl: client.baseUrl, now, timingHistory,
+  });
+  try {
+    const promptId = await client.submit(workflow, { clientId: progress.clientId });
+    progress.setPromptId(promptId);
 
-  const started = Date.now();
-  while (true) {
-    if (Date.now() - started > timeoutMs) {
-      throw new MusicBackendError('music: timeout while waiting for result.', 'MUSIC_RESULT_TIMEOUT');
-    }
-    await sleep(pollMs);
-    const history = await client.history(promptId);
-    const entry = history?.[promptId];
-    if (entry?.status?.status_str === 'error' || entry?.status?.messages?.some(([kind]) => ['execution_error', 'execution_interrupted'].includes(kind))) {
-      throw new MusicBackendError('ACE-Step ComfyUI execution failed');
-    }
-    if (!entry?.status?.completed) continue;
-    const audio = pickAudioFromHistory(history, promptId);
-    if (!audio) throw new MusicBackendError('ACE-Step completed without an audio output');
+    const started = now();
+    while (true) {
+      if (now() - started > timeoutMs) {
+        throw new MusicBackendError('music: timeout while waiting for result.', 'MUSIC_RESULT_TIMEOUT');
+      }
+      await sleepImpl(pollMs);
+      const history = await client.history(promptId);
+      const entry = history?.[promptId];
+      if (entry?.status?.status_str === 'error' || entry?.status?.messages?.some(([kind]) => ['execution_error', 'execution_interrupted'].includes(kind))) {
+        throw new MusicBackendError('ACE-Step ComfyUI execution failed');
+      }
+      if (!entry?.status?.completed) { await progress.tick(); continue; }
+      const audio = pickAudioFromHistory(history, promptId);
+      if (!audio) throw new MusicBackendError('ACE-Step completed without an audio output');
 
-    const buf = await client.audio(audio, Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES));
-    const filename = audio.filename;
-    if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
-      await interaction.editReply(
-        `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`,
-      );
+      progress.phase('音声ファイルを取得・送信準備中');
+      await progress.tick();
+      const buf = await client.audio(audio, Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES));
+      const filename = audio.filename;
+      if (buf.length > DISCORD_MAX_ATTACHMENT_BYTES) {
+        await interaction.editReply(
+          `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`,
+        );
+        return;
+      }
+      const ext = (filename.split('.').pop() || 'mp3').toLowerCase();
+      const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : 'mp3';
+      const outName = `music_${Date.now()}.${safeExt}`;
+      const file = new AttachmentBuilder(buf, { name: outName });
+      const lyricText = (job.lyrics || '').trim();
+      const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
+      const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : '';
+      const header = `🎵 音楽の生成が完了しました。model: ACE-Step | duration=${durationSec}s | prompt: ${prompt.slice(0, 1000)}${lyricLine}`;
+
+      await interaction.editReply({
+        content: header,
+        files: [file],
+      });
+      await progress.complete();
       return;
     }
-    const ext = (filename.split('.').pop() || 'mp3').toLowerCase();
-    const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : 'mp3';
-    const outName = `music_${Date.now()}.${safeExt}`;
-    const file = new AttachmentBuilder(buf, { name: outName });
-    const lyricText = (job.lyrics || '').trim();
-    const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
-    const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : '';
-    const header = `🎵 音楽の生成が完了しました。model: ACE-Step | duration=${durationSec}s | prompt: ${prompt.slice(0, 1000)}${lyricLine}`;
-
-    await interaction.editReply({
-      content: header,
-      files: [file],
-    });
-    return;
-  }
+  } finally { progress.close(); }
 }

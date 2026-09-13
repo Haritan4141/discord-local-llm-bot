@@ -8,6 +8,7 @@ import {
 } from '../config.mjs';
 import { sleep } from '../utils/http.mjs';
 import { truncateText } from '../utils/text.mjs';
+import { createMusicProgress } from './progress.mjs';
 import {
   formatMusicGeneratingMessage,
   formatMusicQueuedMessage,
@@ -109,14 +110,17 @@ export async function aceFetchAudio(pathOrUrl) {
   return { buf, contentType: ct };
 }
 
-export async function handleMusicJobAce(job) {
+export async function handleMusicJobAce(job, {
+  releaseTask = aceReleaseTask, queryResult = aceQueryResult, fetchAudio = aceFetchAudio,
+  sleepImpl = sleep, now = Date.now,
+} = {}) {
   const { interaction, prompt, durationSec } = job;
   const pollMs = Math.max(500, numEnv(ACE_POLL_MS_VALUE, 2000));
   const timeoutMs = 20 * 60 * 1000;
 
   await interaction.editReply(formatMusicGeneratingMessage(durationSec));
 
-  const { taskId, queuePosition } = await aceReleaseTask({
+  const { taskId, queuePosition } = await releaseTask({
     prompt,
     durationSec,
     audioFormat: 'mp3',
@@ -127,54 +131,62 @@ export async function handleMusicJobAce(job) {
 
   if (queuePosition && queuePosition > 1) {
     try {
-      await interaction.editReply(formatMusicQueuedMessage(queuePosition));
-    } catch {}
-  }
-
-  const started = Date.now();
-  while (true) {
-    if (Date.now() - started > timeoutMs) {
-      throw Object.assign(new Error('music: timeout while waiting for result.'), { code: 'MUSIC_RESULT_TIMEOUT' });
+        await interaction.editReply(formatMusicQueuedMessage(queuePosition));
+      } catch {}
     }
 
-    await sleep(pollMs);
-    const { status, result } = await aceQueryResult(taskId);
-
-    if (status === 0) continue;
-    if (status === 2) throw new Error('music: generation failed.');
-
-    let parsed = [];
+  const started = now();
+    // The legacy ACE HTTP API exposes no verified step progress. Still show
+    // elapsed time without inventing a completion percentage or ETA.
+  const progress = createMusicProgress({ interaction, model: 'ace-step', durationSec, timingHistory: null, now, detailSupported: false });
+    progress.phase(queuePosition > 1 ? 'サーバーで待機・生成中（詳細進捗非対応）' : '音楽を生成中（詳細進捗非対応）');
     try {
-      parsed = JSON.parse(result || '[]');
-    } catch {}
+    while (true) {
+      if (now() - started > timeoutMs) {
+        throw Object.assign(new Error('music: timeout while waiting for result.'), { code: 'MUSIC_RESULT_TIMEOUT' });
+      }
 
-    const item = Array.isArray(parsed) ? parsed[0] : null;
-    const filePath = item?.file || '';
-    if (!filePath) throw new Error('music: audio file path missing.');
+      await sleepImpl(pollMs);
+      const { status, result } = await queryResult(taskId);
 
-    const { buf } = await aceFetchAudio(filePath);
-    if (buf.length > Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES)) {
-      await interaction.editReply(
-        `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`,
-      );
+      if (status === 0) { await progress.tick(); continue; }
+      if (status === 2) throw new Error('music: generation failed.');
+
+      let parsed = [];
+      try {
+        parsed = JSON.parse(result || '[]');
+      } catch {}
+
+      const item = Array.isArray(parsed) ? parsed[0] : null;
+      const filePath = item?.file || '';
+      if (!filePath) throw new Error('music: audio file path missing.');
+
+      progress.phase('音声ファイルを取得・送信準備中');
+      await progress.tick();
+      const { buf } = await fetchAudio(filePath);
+      if (buf.length > Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES)) {
+        await interaction.editReply(
+          `music: 生成は完了しましたが、ファイルサイズが Discord 上限を超えています (${Math.round(buf.length / 1024 / 1024)}MB)。duration を短くするか、bitrate の低い設定で再試行してください。`,
+        );
+        return;
+      }
+      const ext = (filePath.split('.').pop() || 'mp3').toLowerCase();
+      const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : 'mp3';
+      const filename = `music_${Date.now()}.${safeExt}`;
+
+      const file = new AttachmentBuilder(buf, { name: filename });
+      const meta = item?.metas?.duration ? `duration=${item.metas.duration}s` : `duration=${durationSec}s`;
+      const promptText = String(item?.prompt || prompt).slice(0, 1000);
+      const lyricText = (job.lyrics || '').trim();
+      const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
+      const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : '';
+      const header = `🎵 音楽の生成が完了しました。model: ACE-Step | ${meta} | prompt: ${promptText}${lyricLine}`;
+
+      await interaction.editReply({
+        content: header,
+        files: [file],
+      });
       return;
     }
-    const ext = (filePath.split('.').pop() || 'mp3').toLowerCase();
-    const safeExt = ext.match(/^[a-z0-9]+$/) ? ext : 'mp3';
-    const filename = `music_${Date.now()}.${safeExt}`;
-
-    const file = new AttachmentBuilder(buf, { name: filename });
-    const meta = item?.metas?.duration ? `duration=${item.metas.duration}s` : `duration=${durationSec}s`;
-    const promptText = String(item?.prompt || prompt).slice(0, 1000);
-    const lyricText = (job.lyrics || '').trim();
-    const lyricSnippet = lyricText.length > 80 ? `${lyricText.slice(0, 80)}…` : lyricText;
-    const lyricLine = lyricSnippet ? ` | lyrics: ${lyricSnippet}` : '';
-    const header = `music: done. ${meta} | prompt: ${promptText}${lyricLine}`;
-
-    await interaction.editReply({
-      content: header,
-      files: [file],
-    });
-    return;
-  }
+  } finally { progress.stop(); }
 }

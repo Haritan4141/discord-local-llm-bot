@@ -1,11 +1,27 @@
 import { randomUUID } from 'node:crypto';
+import { createComfyProgressTransport } from './comfy-progress.mjs';
 
 export class MusicBackendError extends Error {
   constructor(message, code = 'MUSIC_BACKEND_ERROR', options) { super(message, options); this.code = code; }
 }
 
-export function createComfyClient(baseUrl, { fetchImpl = (...args) => fetch(...args), timeoutMs = 15000 } = {}) {
+export function createComfyClient(baseUrl, {
+  fetchImpl = (...args) => fetch(...args),
+  timeoutMs = 15000,
+  websocketFactory,
+  connectTimeoutMs,
+  reconnectMs,
+  earlyEventLimit,
+  maxMessageBytes,
+} = {}) {
   const base = baseUrl.replace(/\/$/, '');
+  const progress = createComfyProgressTransport(base, {
+    ...(websocketFactory === undefined ? {} : { websocketFactory }),
+    ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+    ...(reconnectMs === undefined ? {} : { reconnectMs }),
+    ...(earlyEventLimit === undefined ? {} : { earlyEventLimit }),
+    ...(maxMessageBytes === undefined ? {} : { maxMessageBytes }),
+  });
   async function request(path, { body, binaryLimit, allowEmpty = false } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -55,8 +71,12 @@ export function createComfyClient(baseUrl, { fetchImpl = (...args) => fetch(...a
   }
   return {
     baseUrl: base, request, queue, assertIdle,
-    async submit(workflow) {
-      const result = await request('/prompt', { body: { prompt: workflow, client_id: `discord-music-${randomUUID()}` } });
+    openProgress: progress.openProgress,
+    async submit(workflow, { clientId } = {}) {
+      const resolvedClientId = typeof clientId === 'string' && clientId.trim()
+        ? clientId
+        : `discord-music-${randomUUID()}`;
+      const result = await request('/prompt', { body: { prompt: workflow, client_id: resolvedClientId } });
       if (!result?.prompt_id || (result.node_errors && Object.keys(result.node_errors).length)) {
         throw new MusicBackendError('ComfyUI rejected workflow');
       }
