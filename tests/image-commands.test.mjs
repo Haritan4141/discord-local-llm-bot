@@ -23,7 +23,7 @@ test('reference schema exposes required and optional fields for all four subcomm
   assert.equal(command.name, 'reference');
   assert.deepEqual(command.options.map(option => option.name), ['add', 'list', 'show', 'delete']);
   assert.deepEqual(command.options[0].options.map(option => [option.name, option.type, !!option.required]), [
-    ['name', 3, true], ['image', 11, true], ['image2', 11, false], ['image3', 11, false], ['image4', 11, false], ['replace', 5, false],
+    ['name', 3, true], ['image', 11, true], ['replace', 5, false],
   ]);
   for (const subcommand of command.options.slice(2)) assert.equal(subcommand.options[0].required, true);
 });

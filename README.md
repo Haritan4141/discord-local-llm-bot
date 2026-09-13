@@ -327,9 +327,9 @@ OpenAI の組織設定によっては、GPT Image モデルを使う前に Organ
 
 モデルIDの優先順位は、`OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルです。既存の `OPENAI_IMAGE_MODEL=gpt-image-2` を残すと、専用設定が空欄のモードは引き続き gpt-image-2 を使います。Flare / Sunburst に切り替える場合は上記の専用設定を指定してください。実際の使用モデルを生成結果とログに表示します。
 
-`image` は任意の画像添付1枚、`reference` と `reference2`～`reference8` は保存済み profile の名前または slug です。1つの欄に1つの登録名を指定します。空白やカンマで複数名に分割しないため、名前自体に空白があっても使えます。添付 → reference → reference2 → … の順に各profile内の保存順で画像を送り、全画像の合計が8枚を超える場合は生成前にエラーにします。PNG / JPEG / WebP、1枚20 MiB以下に限定し、MIME・実データの署名・ダウンロードサイズを検証します。
+`image` は任意の画像添付1枚、`reference` と `reference2`～`reference8` は保存済み profile の名前または slug です。1つの登録名に画像1枚を保存し、各欄に1つの登録名を指定します。空白やカンマで複数名に分割しないため、名前自体に空白があっても使えます。添付 → reference → reference2 → … の順に画像を送り、全画像の合計が8枚を超える場合は生成前にエラーにします。PNG / JPEG / WebP、1枚20 MiB以下に限定し、MIME・実データの署名・ダウンロードサイズを検証します。
 
-複数profileを使う場合は、登録名と画像の対応をBotがモデルへ伝えます。例えば `reference:ぽろあーく reference2:はりたん` を選び、promptで「ぽろあーくは左、はりたんは右」と指定できます。1つの登録名に複数画像があれば、その全画像を使用します。未登録・破損したprofileが1つでもあれば、画像生成リクエストを送らずにエラーにします。
+複数profileを使う場合は、登録名と画像の対応をBotがモデルへ伝えます。例えば `reference:ぽろあーく reference2:はりたん` を選び、promptで「ぽろあーくは左、はりたんは右」と指定できます。この場合は2人分・参照画像2枚です。未登録・破損したprofileや旧形式の複数画像profileが1つでもあれば、画像生成リクエストを送らずにエラーにします。
 
 ```text
 /draw prompt:"このキャラクターを月面に描いて" image:<添付画像>
@@ -357,15 +357,15 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 ## 名前付き reference の使い方
 
 ```text
-/reference add name:Akaya image:<画像1> image2:<画像2>
-/reference add name:Akaya image:<追加画像>
+/reference add name:Akaya image:<画像1>
 /reference add name:Akaya image:<新画像> replace:true
 /reference list
 /reference show name:akaya
 /reference delete name:Akaya
 ```
 
-- add は1回に最大4枚（image 必須、image2～image4 任意）。同名は追加、replace:true は既存の全画像を置換し、1 profile 最大8枚です。検証や保存に失敗した置換では元の profile を保持します。
+- add は1つの名前に画像1枚を登録します（image 必須）。同名への再登録はエラーになり、画像を変更するときだけ replace:true を指定します。検証や保存に失敗した置換では元の profile を保持します。古いコマンド候補から image2～image4 が送られた場合も、画像を無視せず登録前に拒否します。
+- 旧形式で複数枚を保存していたprofileは list / show で確認できますが、そのまま /draw には使えません。残す画像を選び、必要な元画像をバックアップしてから `/reference add name:<元の名前> image:<残す1枚> replace:true` で移行してください。起動時に自動削除・自動移行はしません。
 - `/reference add` と `/draw image` は、Discord CDNの通常添付・一時添付URLの両方に対応します。画像はコマンド受信時に取得し、保存済みreferenceは一時URLの期限切れ後も利用できます。
 - 成功時に display name、slug、今回の登録枚数、現在総枚数を返します。display name は新規登録時の入力を保持し、内部 slug はパスに安全な名前へ正規化します。異なる名前が同じ slug になる場合は混在を防ぐためエラーにします。
 - list は display name / slug / image count / updatedAt、show は createdAt と各画像の filename / originalName / size も表示します。
