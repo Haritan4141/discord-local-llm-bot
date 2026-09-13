@@ -10,6 +10,7 @@ export const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const SUPPORTED_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const DEFAULT_TIMEOUT_MS = 30_000;
 const CDN_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
+const CDN_ATTACHMENT_PREFIXES = ['/attachments/', '/ephemeral-attachments/'];
 
 const MIME_EXTENSIONS = {
   'image/png': 'png',
@@ -130,7 +131,10 @@ function attachmentUrl(value) {
 
   const hostname = parsed.hostname.toLowerCase();
   const validPort = parsed.port === '' || parsed.port === '443';
-  const validPath = parsed.pathname.startsWith('/attachments/') && parsed.pathname.length > '/attachments/'.length;
+  // Slash-command uploads can use the ephemeral attachment path on the same CDN.
+  const validPath = CDN_ATTACHMENT_PREFIXES.some(prefix =>
+    parsed.pathname.startsWith(prefix) && parsed.pathname.length > prefix.length,
+  );
   if (parsed.protocol !== 'https:'
     || !CDN_HOSTS.has(hostname)
     || !validPort

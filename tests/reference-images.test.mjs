@@ -108,6 +108,63 @@ test('fetchReferenceImage times out a hanging fetch', async () => {
   );
 });
 
+test('fetchReferenceImage accepts signed normal and ephemeral attachments on both Discord CDN hosts', async () => {
+  for (const host of ['cdn.discordapp.com', 'media.discordapp.net']) {
+    for (const prefix of ['attachments', 'ephemeral-attachments']) {
+      const url = `https://${host}/${prefix}/123/456/cat.png?ex=abc&is=def&hm=signature`;
+      const image = await fetchReferenceImage({ url, contentType: 'image/png', name: 'cat.png', size: PNG.length }, {
+        fetchImpl: async (requestedUrl, options) => {
+          assert.equal(requestedUrl, url); // Preserve the signed query string.
+          assert.equal(options.redirect, 'error');
+          return { ...responseFor(PNG), url };
+        },
+      });
+      assert.deepEqual(image.data, PNG);
+      assert.equal(image.mime, 'image/png');
+    }
+  }
+});
+
+test('ephemeral attachment support still rejects unsafe URLs before fetching', async () => {
+  for (const url of [
+    'http://cdn.discordapp.com/ephemeral-attachments/123/456/cat.png',
+    'https://127.0.0.1/ephemeral-attachments/123/456/cat.png',
+    'https://cdn.discordapp.com.example.com/ephemeral-attachments/123/456/cat.png',
+    'https://cdn.discordapp.com@evil.example/ephemeral-attachments/123/456/cat.png',
+    'https://user:password@cdn.discordapp.com/ephemeral-attachments/123/456/cat.png',
+    'https://cdn.discordapp.com:8443/ephemeral-attachments/123/456/cat.png',
+    ...['attachments', 'ephemeral-attachments'].flatMap(prefix => [
+      `https://cdn.discordapp.com/${prefix}`,
+      `https://cdn.discordapp.com/${prefix}/`,
+      `https://cdn.discordapp.com/${prefix}-extra/123/456/cat.png`,
+      `https://cdn.discordapp.com/${prefix}/../avatars/cat.png`,
+      `https://cdn.discordapp.com/${prefix}%2F123/456/cat.png`,
+    ]),
+    'https://cdn.discordapp.com/avatars/123/cat.png',
+  ]) {
+    let fetched = false;
+    await assert.rejects(fetchReferenceImage({ url, contentType: 'image/png' }, {
+      fetchImpl: async () => { fetched = true; return responseFor(PNG); },
+    }), /Discord CDN/i, url);
+    assert.equal(fetched, false, url);
+  }
+});
+
+test('ephemeral attachments retain redirect, MIME and size protections', async () => {
+  const url = 'https://cdn.discordapp.com/ephemeral-attachments/123/456/cat.png?ex=abc';
+  for (const [response, options, error] of [
+    [{ ...responseFor(PNG), redirected: true }, {}, /redirect/i],
+    [{ ...responseFor(PNG), url: 'https://example.com/cat.png' }, {}, /redirect/i],
+    [responseFor(PNG, 'text/html'), {}, /MIME/i],
+    [responseFor(JPEG), {}, /signature/i],
+    [responseFor(PNG, 'image/png', { 'content-length': '100' }), { maxBytes: 50 }, /large|maximum/i],
+  ]) {
+    await assert.rejects(fetchReferenceImage({ url, contentType: 'image/png' }, {
+      ...options, fetchImpl: async () => response,
+    }), error);
+  }
+});
+
 test('fetchReferenceImage aborts failed downloads and cancels an overflowing stream', async () => {
   let canceled = false;
   let aborted = false;
