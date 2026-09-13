@@ -18,8 +18,12 @@ export function createMusicHandler({ jobs, settings }) {
       await interaction.reply(formatMusicErrorMessage({ code: 'MUSIC_QUEUE_FULL' })); return;
     }
     await interaction.deferReply();
-    // Normal Bot message edits outlive interaction tokens while a long music queue is running.
-    const message = await interaction.fetchReply();
+    // Complete the deferred response before enqueueing: Message.edit cannot clear LOADING.
+    const message = await interaction.editReply({
+      content: '🎵 音楽生成を受け付けました。',
+      allowedMentions: { parse: [] },
+    });
+    // Subsequent Bot message edits outlive interaction tokens during long music jobs.
     const reply = {
       attachmentSizeLimit: interaction.attachmentSizeLimit,
       editReply: payload => message.edit(typeof payload === 'string'
