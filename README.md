@@ -332,10 +332,18 @@ OpenAI の組織設定によっては、GPT Image モデルを使う前に Organ
 
 複数profileを使う場合は、登録名と画像の対応をBotがモデルへ伝えます。例えば `reference:ぽろあーく reference2:はりたん` を選び、promptで「ぽろあーくは左、はりたんは右」と指定できます。この場合は2人分・参照画像2枚です。未登録・破損したprofileや旧形式の複数画像profileが1つでもあれば、画像生成リクエストを送らずにエラーにします。
 
+OpenAIの`/draw`は、reference欄がすべて未指定ならprompt中の登録名を自動検出します。例えば「はりたんとぽろあーくがトランプをしている」だけで、2人の保存画像を各1枚参照します。登録名の出現順に選び、同じ名前の繰り返しは1枚にまとめます。直接添付の`image`があれば、その後に自動検出した画像を追加します。合計8枚を超える場合は勝手に省略せず、生成前にエラーにします。
+
+`reference`～`reference8`を1つでも指定した場合は手動指定だけを使います。`auto_reference:false`でその回の自動検出をOFFにできます（手動referenceや直接添付は引き続き使用）。登録名が見つからなければ参照なしの従来動作です。追加・変更した登録は次の`/draw`から検出対象になります。
+
+検出はLLMを使わない文字列照合で、追加のAPI料金はありません。登録名全体が含まれるかを全角・半角と英字大小を揃えて比較し、元のpromptは変更しません。自動検出は表示上の登録名が対象で、内部slugや未登録の別名は対象外です。同じ位置で名前が重なる場合は長い登録名を優先し、採用した名前の途中から重なる別の名前は追加しません。「はりたんは描かない」のような否定も文字列として一致するため、必要なら`auto_reference:false`を指定してください。自動で選んだ画像には通常の参照画像の入力料金が発生します。
+
 ```text
 /draw prompt:"このキャラクターを月面に描いて" image:<添付画像>
 /draw prompt:"月面のAkaya" reference:Akaya
 /draw prompt:"ぽろあーくとはりたんが一緒にトランプをしている" reference:ぽろあーく reference2:はりたん
+/draw prompt:"ぽろあーくとはりたんが一緒にトランプをしている"
+/draw prompt:"はりたんという文字だけのロゴ" auto_reference:false
 /draw prompt:"添付の構図でAkayaを描いて" image:<構図画像> reference:Akaya model:auto batch:2
 /draw prompt:"白い猫" model:sunburst width:1536 height:1024
 ```
@@ -344,11 +352,11 @@ OpenAI の組織設定によっては、GPT Image モデルを使う前に Organ
 
 `.env` の `OPENAI_IMAGE_REFERENCE_MAX_EDGE=768` で変更できます（256〜2048の整数、変更後はBot再起動）。まず768pxで確認し、特徴を保てるなら512px、細部が不足するなら1024pxを試せます。これは入力画像の上限で、生成画像の`size`や`quality`は変更しません。縮小によるトークン・料金の削減幅は保証されないため、同じ条件で生成し`input_image`を比較してください。
 
-完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）、参照画像の実際の送信解像度（reference input）を表示します。複数profileを指定した場合は登録名一覧も表示します。APIが返さない使用量は0として表示します。
+完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）、参照画像の実際の送信解像度（reference input）を表示します。自動検出時は1人でも「自動参照」に登録名を表示し、手動の複数profileでは登録名一覧を表示します。APIが返さない使用量は0として表示します。
 
 料金はモデル・品質・サイズ・参照画像・生成枚数で変わります。最新の仕様は [OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) を確認してください。
 
-`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference`～`reference8` / `model`（auto を含む）を指定すると、OpenAI 専用である旨を返して生成を実行しません。
+`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference`～`reference8` / `model`（auto を含む）/ `auto_reference`を指定すると、OpenAI 専用である旨を返して生成を実行しません。
 
 日本語プロンプトを英語に翻訳して SD WebUI に送る場合:
 

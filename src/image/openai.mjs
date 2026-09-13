@@ -121,6 +121,7 @@ export function formatOpenAiImageCompletion({
   referenceCount,
   referenceNames = [],
   referenceDimensions = [],
+  automaticReferences = false,
   usage,
   maxPromptChars = 1000,
 }) {
@@ -130,8 +131,8 @@ export function formatOpenAiImageCompletion({
     `生成完了 | provider: OpenAI | model: ${model}${mode ? ` | mode: ${mode}` : ''}` +
       ` | size: ${size} | quality: ${quality} | images: ${imageCount}` +
       (referenceCount == null ? '' : ` | references: ${referenceCount}`),
-    ...(referenceNames.length > 1 ? [
-      `reference profiles: ${truncateText(referenceNames.map(name => JSON.stringify(name)).join(' / '), 450)}`,
+    ...(referenceNames.length > 1 || (automaticReferences && referenceNames.length) ? [
+      `${automaticReferences ? '自動参照' : 'reference profiles'}: ${truncateText(referenceNames.map(name => JSON.stringify(name)).join(' / '), 450)}`,
     ] : []),
     ...(usage ? [
       `usage | input_text: ${usage.inputTextTokens} | input_image: ${usage.inputImageTokens}` +

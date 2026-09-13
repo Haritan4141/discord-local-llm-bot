@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createReferenceHandler } from '../src/discord/references.mjs';
 import { createReferenceStore } from '../src/image/references.mjs';
 import { fetchReferenceImage } from '../src/image/reference-images.mjs';
 import { createDrawHandler } from '../src/discord/draw.mjs';
+import { generateOpenAiImages } from '../src/image/openai.mjs';
+import sharp from 'sharp';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4//9/AwAJfAN+bOwQyQAAAABJRU5ErkJggg==', 'base64');
 const logger = { error() {} };
@@ -119,7 +121,7 @@ test('two saved single-image profiles reach draw as exactly two images with name
   const read = key => values[key] ?? null;
   const replies = [];
   let generated = 0;
-  const i = { options: { getString: read, getInteger: read, getNumber: read, getAttachment: read },
+  const i = { options: { getString: read, getInteger: read, getNumber: read, getAttachment: read, getBoolean: read },
     async deferReply() {}, async editReply(reply) { replies.push(reply); } };
   await createDrawHandler({
     config: { IMAGE_PROVIDER_MODE: 'openai', OPENAI_IMAGE_SIZE_VALUE: '1024x1024', OPENAI_IMAGE_QUALITY_VALUE: 'low',
@@ -140,4 +142,45 @@ test('two saved single-image profiles reach draw as exactly two images with name
   assert.equal(replies.length, 1);
   assert.equal(replies[0].files.length, 1);
   assert.match(replies[0].content, /references: 2/);
+});
+
+test('prompt-only draw detects real saved profiles, sends resized multipart images and preserves storage', async t => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), 'discord-auto-reference-draw-'));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const store = createReferenceStore({ rootDir });
+  const original = await sharp({ create: { width: 1600, height: 900, channels: 4, background: '#12345680' } }).png().toBuffer();
+  const snapshots = [];
+  for (const name of ['はりたん', 'ぽろあーく']) {
+    const manifest = await store.add(name, [{ data: original, mime: 'image/png', originalName: `${name}.png` }]);
+    for (const file of ['manifest.json', manifest.images[0].filename]) {
+      const filePath = path.join(rootDir, manifest.slug, file);
+      snapshots.push([filePath, await readFile(filePath)]);
+    }
+  }
+  const values = { prompt: 'ぽろあーくとはりたんがトランプをしている' };
+  const read = key => values[key] ?? null;
+  let reply, apiCalls = 0;
+  const i = { options: { getString: read, getInteger: read, getNumber: read, getAttachment: read, getBoolean: read },
+    async deferReply() {}, async editReply(value) { reply = value; } };
+  await createDrawHandler({
+    config: { IMAGE_PROVIDER_MODE: 'openai', OPENAI_IMAGE_SIZE_VALUE: '1024x1024', OPENAI_IMAGE_QUALITY_VALUE: 'low',
+      OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE: 768, OPENAI_IMAGE_MODELS: { flare: 'test-flare', sunburst: 'test-sunburst' }, DISCORD_MAX_ATTACHMENT_BYTES: 1024 * 1024 },
+    referenceStore: createReferenceStore({ rootDir }), logger: { log() {}, error(error) { throw error; } },
+    generateImages: args => generateOpenAiImages({ ...args, fetchImpl: async (_, request) => {
+      apiCalls++;
+      assert.equal(request.body.get('model'), 'test-sunburst');
+      assert.match(request.body.get('prompt'), /Image 1: reference profile "ぽろあーく"/);
+      assert.match(request.body.get('prompt'), /Image 2: reference profile "はりたん"/);
+      const images = request.body.getAll('image[]');
+      assert.equal(images.length, 2);
+      for (const image of images) {
+        const metadata = await sharp(Buffer.from(await image.arrayBuffer())).metadata();
+        assert.deepEqual([metadata.width, metadata.height], [768, 432]);
+      }
+      return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }));
+    } }),
+  })(i);
+  assert.equal(apiCalls, 1);
+  assert.match(reply.content, /自動参照: "ぽろあーく" \/ "はりたん"/);
+  for (const [file, bytes] of snapshots) assert.deepEqual(await readFile(file), bytes);
 });

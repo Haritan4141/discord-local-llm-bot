@@ -77,7 +77,10 @@ export function buildDrawCommand() {
           { name: "flare", value: "flare" },
           { name: "sunburst", value: "sunburst" }
         ).setRequired(false)
-    );
+    ).addBooleanOption(option => option
+      .setName("auto_reference")
+      .setDescription("登録名をpromptから自動参照（既定true、手動reference優先、falseで無効・OpenAI only）")
+      .setRequired(false));
 }
 
 export function buildReferenceCommand() {

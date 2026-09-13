@@ -6,6 +6,7 @@ import { resolveOpenAiImageModel } from '../image/openai-models.mjs';
 import { assertReferenceImageCount, fetchReferenceImage } from '../image/reference-images.mjs';
 import { DRAW_REFERENCE_OPTION_NAMES, addReferenceProfileLabels } from '../image/draw-references.mjs';
 import { prepareReferenceImages } from '../image/prepare-references.mjs';
+import { detectReferenceProfiles } from '../image/automatic-references.mjs';
 import { truncateText } from '../utils/text.mjs';
 
 export function createDrawHandler({
@@ -38,13 +39,14 @@ export function createDrawHandler({
     const batchOpt = interaction.options.getInteger('batch');
     const negativeOpt = interaction.options.getString('negative');
     const image = interaction.options.getAttachment('image');
-    const referenceNames = DRAW_REFERENCE_OPTION_NAMES
+    let referenceNames = DRAW_REFERENCE_OPTION_NAMES
       .map(name => interaction.options.getString(name))
       .filter(name => name != null);
     const modelOpt = interaction.options.getString('model');
+    const autoReferenceOpt = interaction.options.getBoolean('auto_reference');
 
-    if (config.IMAGE_PROVIDER_MODE !== 'openai' && (image || referenceNames.length || modelOpt != null)) {
-      await interaction.reply('image / reference～reference8 / model (auto・flare・sunburst) は現在 OpenAI image provider のみ対応しています。');
+    if (config.IMAGE_PROVIDER_MODE !== 'openai' && (image || referenceNames.length || modelOpt != null || autoReferenceOpt != null)) {
+      await interaction.reply('image / reference～reference8 / model (auto・flare・sunburst) / auto_reference は現在 OpenAI image provider のみ対応しています。');
       return;
     }
 
@@ -60,6 +62,12 @@ export function createDrawHandler({
           configuredSize: config.OPENAI_IMAGE_SIZE_VALUE,
         });
         const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : 1, 1, 4);
+        let automaticReferences = false;
+        if (!referenceNames.length && autoReferenceOpt !== false) {
+          const profiles = detectReferenceProfiles(prompt, await referenceStore.list());
+          referenceNames = profiles.map(profile => profile.displayName);
+          automaticReferences = referenceNames.length > 0;
+        }
         const references = [];
         const referenceGroups = [];
         for (const name of referenceNames) {
@@ -109,6 +117,7 @@ export function createDrawHandler({
         const usage = result.usage;
         logger.log(
           `[openai-image] model=${model} mode=${mode} references=${references.length} size=${size} quality=${config.OPENAI_IMAGE_QUALITY_VALUE}` +
+          ` reference_selection=${automaticReferences ? 'automatic' : referenceNames.length ? 'manual' : 'none'}` +
           ` images=${files.length} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens}` +
           ` total_tokens=${usage.totalTokens}`,
           ...(referenceDimensions.length ? [`reference_input=${referenceDimensions.join(',')}`] : []),
@@ -123,6 +132,7 @@ export function createDrawHandler({
           referenceCount: references.length,
           referenceNames,
           referenceDimensions,
+          automaticReferences,
           usage,
         });
         await interaction.editReply({
