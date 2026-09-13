@@ -363,6 +363,7 @@ SD_PROMPT_TRANSLATE_MODEL=gemma3:12b
 ```
 
 - add は1回に最大4枚（image 必須、image2～image4 任意）。同名は追加、replace:true は既存の全画像を置換し、1 profile 最大8枚です。検証や保存に失敗した置換では元の profile を保持します。
+- `/reference add` と `/draw image` は、Discord CDNの通常添付・一時添付URLの両方に対応します。画像はコマンド受信時に取得し、保存済みreferenceは一時URLの期限切れ後も利用できます。
 - 成功時に display name、slug、今回の登録枚数、現在総枚数を返します。display name は新規登録時の入力を保持し、内部 slug はパスに安全な名前へ正規化します。異なる名前が同じ slug になる場合は混在を防ぐためエラーにします。
 - list は display name / slug / image count / updatedAt、show は createdAt と各画像の filename / originalName / size も表示します。
 - delete は profile ディレクトリと画像を削除します。存在しない名前にはエラーを返します。

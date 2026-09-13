@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createReferenceHandler } from '../src/discord/references.mjs';
 import { createReferenceStore } from '../src/image/references.mjs';
+import { fetchReferenceImage } from '../src/image/reference-images.mjs';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=', 'base64');
 const logger = { error() {} };
@@ -59,6 +60,26 @@ test('failed attachment fetch never mutates the existing profile', async () => {
   await handler(i);
   assert.equal(writes, 0);
   assert.match(i.replies[0].content, /png\/jpeg\/webp/);
+});
+
+test('/reference add persists an ephemeral slash-command attachment through the real downloader', async t => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), 'discord-ephemeral-reference-'));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const url = 'https://cdn.discordapp.com/ephemeral-attachments/123/456/avatar.png?ex=abc&hm=signature';
+  const i = interaction('add', { name: 'Avatar', image: { url, name: 'avatar.png', contentType: 'image/png', size: png.length } });
+  await createReferenceHandler({
+    store: createReferenceStore({ rootDir }), logger,
+    fetchImage: attachment => fetchReferenceImage(attachment, {
+      fetchImpl: async requestedUrl => {
+        assert.equal(requestedUrl, url);
+        return new Response(png, { headers: { 'content-type': 'image/png' } });
+      },
+    }),
+  })(i);
+  assert.match(i.replies.at(-1).content, /登録完了.*現在総枚数: 1/);
+  const images = await createReferenceStore({ rootDir }).loadImages('Avatar');
+  assert.equal(images.length, 1);
+  assert.deepEqual(images[0].data, png);
 });
 
 test('long reference lists are split without losing entries or triggering mentions', async () => {

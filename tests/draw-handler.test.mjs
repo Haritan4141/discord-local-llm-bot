@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDrawHandler } from '../src/discord/draw.mjs';
 import { resolveOpenAiImageModels } from '../src/image/openai-models.mjs';
+import { fetchReferenceImage } from '../src/image/reference-images.mjs';
 import { numEnv } from '../src/utils/llm-config.mjs';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB9sAAAAASUVORK5CYII=', 'base64');
@@ -93,6 +94,30 @@ test('/draw rejects missing profile, combined limit, invalid image and invalid d
     assert.equal(generated, false);
     assert.match(i.replies.at(-1).content, c.error);
   }
+});
+
+test('/draw accepts an ephemeral attachment through the real downloader and selects Sunburst', async () => {
+  const url = 'https://cdn.discordapp.com/ephemeral-attachments/123/456/avatar.png?ex=abc&hm=signature';
+  const i = interaction({ prompt: '雪山を背景に', image: { url, name: 'avatar.png', contentType: 'image/png' } });
+  let generated = false;
+  await createDrawHandler({
+    config, logger,
+    fetchImage: attachment => fetchReferenceImage(attachment, {
+      fetchImpl: async requestedUrl => {
+        assert.equal(requestedUrl, url);
+        return new Response(png, { headers: { 'content-type': 'image/png' } });
+      },
+    }),
+    generateImages: async args => {
+      generated = true;
+      assert.equal(args.model, 'gpt-image-2.5-sunburst');
+      assert.equal(args.references.length, 1);
+      assert.deepEqual(args.references[0].data, png);
+      return { images: [png.toString('base64')], usage: {} };
+    },
+  })(i);
+  assert.equal(generated, true);
+  assert.equal(i.replies.at(-1).files.length, 1);
 });
 
 test('SD rejects all explicitly supplied OpenAI options including auto before downloading or generating', async () => {
