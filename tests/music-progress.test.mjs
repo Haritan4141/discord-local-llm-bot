@@ -12,7 +12,7 @@ const workflow = {
 function setup(options = {}) {
   let time = 0;
   const edits = [], records = [];
-  const timingHistory = { estimate: () => null, record: (...args) => records.push(args) };
+  const timingHistory = { estimateStatus: () => ({ status: 'collecting', samples: 0, requiredSamples: 3 }), record: (...args) => records.push(args) };
   const p = createMusicProgress({
     interaction: { editReply: async value => edits.push(value) }, workflow, model: 'yue2',
     durationSec: 120, now: () => time, timingHistory, ...options,
@@ -28,7 +28,7 @@ test('YuE2 variable-length token caps never become a completion percentage', () 
   for (const [node, max] of [['abc', 8192], ['music', 9000]]) {
     h.stage(node); h.steps(node, max / 2, max);
     assert.doesNotMatch(h.p.content(), /50%|ステップ/);
-    assert.match(h.p.content(), /算出中/);
+    assert.match(h.p.content(), /サーバーの実行情報待ち/);
   }
 });
 
@@ -39,7 +39,7 @@ test('fixed sampler shows stage percent and measured stage-only ETA, not a whole
   h.at(6000); h.steps('sampler', 3);
   assert.match(h.p.content(), /3 \/ 32ステップ・9%/);
   assert.match(h.p.content(), /この工程の残り: 約.*推定・保存\/送信時間は別/);
-  assert.match(h.p.content(), /完了目安: 算出中/);
+  assert.match(h.p.content(), /完了目安: サーバーの実行情報待ち/);
   assert.match(h.p.content(), /経過: 6秒/);
   h.stage('decode');
   assert.doesNotMatch(h.p.content(), /ステップ・|この工程の残り/);
@@ -95,10 +95,10 @@ test('disconnect and stalled events suppress stale numeric estimates; reconnect 
 test('empirical estimates and successful timing records exclude private prompt/lyrics/seed', () => {
   const h = setup(); h.p.onConnection(true); h.emit('execution_start'); h.emit('execution_cached', { nodes: [] });
   h.stage('abc'); h.at(12000); h.stage('sampler');
-  h.timingHistory.estimate = (key, stage, options) => {
+  h.timingHistory.estimateStatus = (key, stage, options) => {
     assert.match(key, /^[a-f0-9]{64}$/); assert.equal(stage, 'sampler:KSampler');
     assert.equal(options.elapsedMs, 5000);
-    return { minMs: 30000, maxMs: 60000, samples: 3 };
+    return { status: 'ready', estimate: { minMs: 30000, maxMs: 60000, samples: 3 } };
   };
   h.at(17000);
   assert.match(h.p.content(), /完了目安: あと約30秒〜1分0秒.*過去3件/);
@@ -139,12 +139,61 @@ test('three completed traces enable total ETA on the next matching job, not othe
     return h;
   };
   for (let i = 0; i < 3; i++) {
-    const h = make(); h.at(30000 + i * 1000); await h.p.complete();
+    const h = make();
+    assert.ok(h.p.content().includes(`実績を収集中（同条件: ${i}/3件完了）`));
+    h.at(30000 + i * 1000); await h.p.complete();
   }
   assert.match(make().p.content(), /完了目安: あと約.*過去3件/);
   for (const h of [make({ durationSec: 180 }), make({ baseUrl: 'http://another:8188' }), make({}, ['abc'])]) {
-    assert.match(h.p.content(), /完了目安: 算出中/);
+    assert.match(h.p.content(), /完了目安: 実績を収集中（同条件: 0\/3件完了）/);
   }
   const h = make({ workflow: { ...workflow, abc: { ...workflow.abc, inputs: { style: 'different private prompt', lyrics: 'different words', seed: 456 } } } });
   assert.match(h.p.content(), /過去3件/); // Prompt text never fragments or enters timing storage.
+});
+
+test('ETA reasons distinguish stale/missing notifications, interrupted traces, finalization and unsupported APIs', () => {
+  const h = setup();
+  assert.match(h.p.content(), /完了目安: 進捗通知の更新待ち/);
+  h.p.onConnection(true);
+  assert.match(h.p.content(), /サーバーの実行情報待ち/);
+  h.emit('execution_start'); h.stage('decode');
+  assert.match(h.p.content(), /サーバーの実行情報待ち/); // Cache classification still unknown.
+  h.emit('execution_cached', { nodes: [] });
+  assert.match(h.p.content(), /同条件: 0\/3件完了/);
+  h.at(31000);
+  assert.match(h.p.content(), /完了目安: 進捗通知の更新待ち/);
+  assert.doesNotMatch(h.p.content(), /実績を収集中/);
+  h.stage('decode');
+  assert.match(h.p.content(), /実績を収集中/);
+  h.p.onConnection(false); h.p.onConnection(true);
+  assert.match(h.p.content(), /進捗通知が途中で途切れたため/);
+  assert.doesNotMatch(h.p.content(), /実績を収集中/);
+  h.stage(null); h.at(100000);
+  assert.match(h.p.content(), /完了目安: 最終処理中/);
+  assert.doesNotMatch(h.p.content(), /更新待ち|実績を収集中/);
+
+  const transfer = setup();
+  transfer.p.phase('音声ファイルを取得・送信準備中', { finalizing: true });
+  assert.match(transfer.p.content(), /完了目安: 最終処理中/); // Even without WebSocket notifications.
+  const legacy = setup({ detailSupported: false });
+  assert.match(legacy.p.content(), /この接続方式では取得できません/);
+  assert.doesNotMatch(legacy.p.content(), /更新待ち|実績を収集中/);
+});
+
+test('total ETA overrun is explicit while missing timing history is not reported as zero samples', async () => {
+  const history = createMusicTimingHistory();
+  const make = timingHistory => {
+    const h = setup({ timingHistory });
+    h.p.onConnection(true); h.emit('execution_start'); h.emit('execution_cached', { nodes: [] }); h.stage('decode');
+    return h;
+  };
+  for (let i = 0; i < 3; i++) {
+    const h = make(history); h.at(10000); await h.p.complete();
+  }
+  const h = make(history);
+  assert.match(h.p.content(), /あと約/);
+  h.at(13000);
+  assert.match(h.p.content(), /予測時間を超過/);
+  assert.doesNotMatch(h.p.content(), /あと約|算出中|実績を収集中/);
+  assert.match(make(null).p.content(), /推定に使える計測情報がありません/);
 });

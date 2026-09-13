@@ -27,7 +27,7 @@ export function createYue2Handler({ client, settings, sleep = wait, now = Date.n
           if (result.maxDurationSec !== settings.maxDurationSec || result.targetDurationSec !== job.durationSec || result.actualDurationSec > settings.maxDurationSec + 0.04) {
             throw new MusicBackendError('YuE2 metadata does not match this request', 'MUSIC_STATE_UNKNOWN');
           }
-          progress.phase('音声ファイルを取得・送信準備中');
+          progress.phase('音声ファイルを取得・送信準備中', { finalizing: true });
           await progress.tick();
           // 8MiB fallback is conservative when the interaction does not report its actual limit.
           const limit = Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, 24 * 1024 * 1024);

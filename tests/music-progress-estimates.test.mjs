@@ -25,6 +25,27 @@ test('estimates stay unavailable until three samples and use a broad range', () 
   });
 });
 
+test('estimate status explains the matching sample threshold without changing the estimate API', () => {
+  const history = createMusicTimingHistory();
+  for (let count = 0; count < 3; count++) {
+    assert.deepEqual(history.estimateStatus('key', 'decode'), { status: 'collecting', samples: count, requiredSamples: 3 });
+    assert.equal(history.estimate('key', 'decode'), null);
+    addSamples(history, 'key', 'decode', [1000]);
+  }
+  assert.deepEqual(history.estimateStatus('key', 'decode'), {
+    status: 'ready', estimate: history.estimate('key', 'decode'),
+  });
+  assert.deepEqual(history.estimateStatus('different-key', 'decode'), { status: 'collecting', samples: 0, requiredSamples: 3 });
+  assert.deepEqual(history.estimateStatus('key', 'different-stage'), { status: 'collecting', samples: 0, requiredSamples: 3 });
+  assert.deepEqual(history.estimateStatus('key', 'decode', { elapsedMs: 1300 }), { status: 'overrun', samples: 3 });
+  assert.equal(history.estimate('key', 'decode', { elapsedMs: 1300 }), null);
+  for (const args of [['', 'decode'], ['key', 'decode', null], ['key', 'decode', { elapsedMs: NaN }]]) {
+    assert.deepEqual(history.estimateStatus(...args), { status: 'unavailable' });
+  }
+  addSamples(history, 'zero', 'decode', [0, 0, 0]);
+  assert.deepEqual(history.estimateStatus('zero', 'decode'), { status: 'unavailable' });
+});
+
 test('elapsed time is subtracted and overruns do not become a false zero ETA', () => {
   const history = createMusicTimingHistory();
   addSamples(history, 'key-a', 'decode', [1000, 1200, 1400]);
@@ -106,6 +127,7 @@ test('persistence reloads valid bounded samples and ignores corrupt or oversized
   addSamples(history, 'key-a', 'sampler', [1000, 1200, 1400]);
   await history.flush();
   const reloaded = createMusicTimingHistory({ path: filePath });
+  assert.equal(reloaded.estimateStatus('key-a', 'sampler').status, 'ready');
   assert.deepEqual(reloaded.estimate('key-a', 'sampler'), {
     minMs: 700,
     maxMs: 1820,

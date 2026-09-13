@@ -267,7 +267,7 @@ export async function handleMusicJobComfy(job, {
       const audio = pickAudioFromHistory(history, promptId);
       if (!audio) throw new MusicBackendError('ACE-Step completed without an audio output');
 
-      progress.phase('音声ファイルを取得・送信準備中');
+      progress.phase('音声ファイルを取得・送信準備中', { finalizing: true });
       await progress.tick();
       const buf = await client.audio(audio, Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES));
       const filename = audio.filename;

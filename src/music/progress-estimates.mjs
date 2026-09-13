@@ -13,6 +13,7 @@ const MAX_STAGE_LENGTH = 128;
 const MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PERSISTED_BYTES = 1024 * 1024;
 const SCHEMA_VERSION = 1;
+const MIN_ESTIMATE_SAMPLES = 3;
 
 function isSafeInteger(value, min, max) {
   return Number.isInteger(value) && value >= min && value <= max;
@@ -167,27 +168,35 @@ export function createMusicTimingHistory(options = {}) {
   const samples = new Map(loadPersistedData(persistencePath, { maxKeys, maxSamples }));
   let writeChain = Promise.resolve();
 
-  function estimate(key, stage, options = {}) {
-    if (!options || typeof options !== 'object' || Array.isArray(options)) return null;
+  function estimateStatus(key, stage, options = {}) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) return { status: 'unavailable' };
     const { elapsedMs = 0 } = options;
     if (!isSafeText(key, MAX_KEY_LENGTH) || !isSafeText(stage, MAX_STAGE_LENGTH)
       || !isSafeDuration(elapsedMs)) {
-      return null;
+      return { status: 'unavailable' };
     }
 
     const values = samples.get(key)?.get(stage);
-    if (!values || values.length < 3) return null;
+    const sampleCount = values?.length ?? 0;
+    if (sampleCount < MIN_ESTIMATE_SAMPLES) {
+      return { status: 'collecting', samples: sampleCount, requiredSamples: MIN_ESTIMATE_SAMPLES };
+    }
 
     const observedMinimum = Math.min(...values);
     const observedMaximum = Math.max(...values);
     // A deliberately broad range avoids presenting a noisy sample as a promise.
     const lowerBound = observedMinimum * 0.7;
     const upperBound = observedMaximum * 1.3;
-    if (!Number.isFinite(upperBound) || upperBound <= 0 || elapsedMs >= upperBound) return null;
+    if (!Number.isFinite(upperBound) || upperBound <= 0) return { status: 'unavailable' };
+    if (elapsedMs >= upperBound) return { status: 'overrun', samples: sampleCount };
 
     const minMs = Math.max(0, Math.round(lowerBound - elapsedMs));
     const maxMs = Math.max(1, Math.round(upperBound - elapsedMs));
-    return { minMs: Math.min(minMs, maxMs), maxMs, samples: values.length };
+    return { status: 'ready', estimate: { minMs: Math.min(minMs, maxMs), maxMs, samples: sampleCount } };
+  }
+
+  function estimate(key, stage, options = {}) {
+    return estimateStatus(key, stage, options).estimate ?? null;
   }
 
   function record(key, observations) {
@@ -246,5 +255,5 @@ export function createMusicTimingHistory(options = {}) {
     return writeChain;
   }
 
-  return { estimate, record, flush };
+  return { estimate, estimateStatus, record, flush };
 }

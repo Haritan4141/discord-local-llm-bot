@@ -161,7 +161,7 @@ export async function handleMusicJobAce(job, {
       const filePath = item?.file || '';
       if (!filePath) throw new Error('music: audio file path missing.');
 
-      progress.phase('音声ファイルを取得・送信準備中');
+      progress.phase('音声ファイルを取得・送信準備中', { finalizing: true });
       await progress.tick();
       const { buf } = await fetchAudio(filePath);
       if (buf.length > Math.min(interaction.attachmentSizeLimit || 8 * 1024 * 1024, DISCORD_MAX_ATTACHMENT_BYTES)) {
