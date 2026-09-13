@@ -2,6 +2,7 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveOpenAiImageModels } from './image/openai-models.mjs';
+import { resolveReferenceMaxEdge } from './image/prepare-references.mjs';
 import {
   defaultLlmBaseUrl,
   isOpenAiApiProvider,
@@ -39,6 +40,7 @@ const {
   OPENAI_IMAGE_MODEL_SUNBURST,
   OPENAI_IMAGE_QUALITY,
   OPENAI_IMAGE_SIZE,
+  OPENAI_IMAGE_REFERENCE_MAX_EDGE,
   OPENAI_IMAGE_API_KEY,
   OLLAMA_KEEP_ALIVE: OLLAMA_KEEP_ALIVE_ENV,
   OLLAMA_URL,
@@ -268,6 +270,7 @@ export const OPENAI_IMAGE_MODELS = resolveOpenAiImageModels({
 export const OPENAI_IMAGE_MODEL_NAME = OPENAI_IMAGE_MODELS.flare;
 export const OPENAI_IMAGE_QUALITY_VALUE = resolveOpenAiImageQuality(OPENAI_IMAGE_QUALITY);
 export const OPENAI_IMAGE_SIZE_VALUE = String(OPENAI_IMAGE_SIZE || '1024x1024').trim();
+export const OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE = resolveReferenceMaxEdge(OPENAI_IMAGE_REFERENCE_MAX_EDGE);
 export const OPENAI_IMAGE_API_KEY_VALUE = OPENAI_IMAGE_API_KEY || LLM_API_KEY;
 export const OPENAI_IMAGE_GENERATIONS_URL = 'https://api.openai.com/v1/images/generations';
 export const OPENAI_IMAGE_EDITS_URL = 'https://api.openai.com/v1/images/edits';

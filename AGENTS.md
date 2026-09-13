@@ -51,6 +51,7 @@
 - `src/image/openai-models.mjs` : auto / flare / sunburst 選択と旧モデル設定の fallback
 - `src/image/draw-references.mjs` : 複数profile指定用のoption名と、登録名・画像順の対応をモデルへ渡すprompt補足
 - `src/image/reference-images.mjs`, `references.mjs` : 参照画像の取得・検証と manifest / 画像の永続保存
+- `src/image/prepare-references.mjs` : API送信用の参照画像縮小。原本を変更せず、既定の長辺上限768px・縦横比・透過・EXIFの向きを維持し、拡大しない
 - `src/discord/draw.mjs`, `references.mjs`, `image-commands.mjs` : `/draw` / `/reference` ハンドラとコマンド登録定義
 - `src/music/comfy.mjs`, `src/music/ace.mjs`, `src/music/queue.mjs` : ComfyUI / ACE-Step / 共通キュー
 - `src/othello/board.mjs` / `state.mjs` : 盤面ルール・Discordに依存しない対局進行
@@ -72,7 +73,7 @@
 - `start-ollama.bat` : Ollama 起動
 
 ## 実行の前提
-- Node.js 18 以降 (fetch 使用)
+- Node.js 20.9.0 以降 (参照画像の縮小にsharpを使用)
 - Discord Bot トークン
 - Discord Application の `CLIENT_ID` と、ギルド登録用の `GUILD_ID`（カンマ区切りで複数可）
 - Ollama / LM Studio / Custom OpenAI 互換 chat/completions
@@ -92,6 +93,7 @@
 - referenceは1登録名に画像1枚。同名への再登録は拒否し、replace:trueでのみ置換。旧複数枚profileはlist/showで調査できるがdrawには使えず、バックアップ後に残す画像を明示して移行する。自動削除・自動移行はしない
 - OpenAI参照画像は添付→reference→reference2～reference8の順で全画像合計8枚まで。1欄1登録名で空白分割しない。PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference～reference8 / model（autoも含む）は未対応
 - `OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルの順で解決する
+- `OPENAI_IMAGE_REFERENCE_MAX_EDGE` は送信参照画像の長辺上限（256〜2048、既定768）。生成画像のサイズ・品質とは別。元画像の再保存や自動削除は禁止。縮小はsharpで行い、4,000万画素超過・デコード失敗時はAPI呼び出し前に終了する
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う
 - `LLM_TEMPERATURE` は通常チャット系の応答安定性に効く。低めほど暴走しにくい

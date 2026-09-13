@@ -5,6 +5,7 @@ import { formatOpenAiImageCompletion, generateOpenAiImages, resolveOpenAiImageSi
 import { resolveOpenAiImageModel } from '../image/openai-models.mjs';
 import { assertReferenceImageCount, fetchReferenceImage } from '../image/reference-images.mjs';
 import { DRAW_REFERENCE_OPTION_NAMES, addReferenceProfileLabels } from '../image/draw-references.mjs';
+import { prepareReferenceImages } from '../image/prepare-references.mjs';
 import { truncateText } from '../utils/text.mjs';
 
 export function createDrawHandler({
@@ -68,6 +69,10 @@ export function createDrawHandler({
           references.push(...profileImages);
         }
         if (image) references.unshift(await fetchImage(image));
+        const preparedReferences = await prepareReferenceImages(references, {
+          maxEdge: config.OPENAI_IMAGE_REFERENCE_MAX_EDGE_VALUE,
+        });
+        const referenceDimensions = preparedReferences.map(({ width, height }) => `${width}x${height}`);
         const { model, mode } = resolveOpenAiImageModel({
           mode: modelOpt,
           referenceCount: references.length,
@@ -82,7 +87,7 @@ export function createDrawHandler({
           size,
           quality: config.OPENAI_IMAGE_QUALITY_VALUE,
           count: finalBatch,
-          references,
+          references: preparedReferences,
         });
 
         if (!result.images.length) {
@@ -106,6 +111,7 @@ export function createDrawHandler({
           `[openai-image] model=${model} mode=${mode} references=${references.length} size=${size} quality=${config.OPENAI_IMAGE_QUALITY_VALUE}` +
           ` images=${files.length} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens}` +
           ` total_tokens=${usage.totalTokens}`,
+          ...(referenceDimensions.length ? [`reference_input=${referenceDimensions.join(',')}`] : []),
         );
         const content = formatOpenAiImageCompletion({
           prompt,
@@ -116,6 +122,7 @@ export function createDrawHandler({
           imageCount: files.length,
           referenceCount: references.length,
           referenceNames,
+          referenceDimensions,
           usage,
         });
         await interaction.editReply({

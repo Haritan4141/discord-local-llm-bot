@@ -5,7 +5,7 @@
   "main": "index.mjs",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0"
   },
   "repository": {
     "type": "git",
@@ -41,6 +41,7 @@
   "dependencies": {
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
+    "sharp": "0.35.4",
     "ws": "^8.19.0"
   }
 }

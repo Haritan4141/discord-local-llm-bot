@@ -120,6 +120,7 @@ export function formatOpenAiImageCompletion({
   mode,
   referenceCount,
   referenceNames = [],
+  referenceDimensions = [],
   usage,
   maxPromptChars = 1000,
 }) {
@@ -136,6 +137,7 @@ export function formatOpenAiImageCompletion({
       `usage | input_text: ${usage.inputTextTokens} | input_image: ${usage.inputImageTokens}` +
       ` | output: ${usage.outputTokens} | total: ${usage.totalTokens}`,
     ] : []),
+    ...(referenceDimensions.length ? [`reference input: ${referenceDimensions.join(' / ')} px`] : []),
   ].join('\n');
 }
 

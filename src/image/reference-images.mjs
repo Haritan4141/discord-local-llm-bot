@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 
 /**
  * Reference images are intentionally kept small and bounded. Eight images is
- * this bot's cap for one saved profile or one combined /draw request.
+ * this bot's cap for one combined /draw request (one image per saved profile).
  */
 export const MAX_REFERENCE_IMAGES = 8;
 export const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
