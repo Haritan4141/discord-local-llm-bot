@@ -34,7 +34,9 @@ export function convertChatMessagesForResponses(messages) {
 
 export function modelSupportsOpenAiReasoning(model) {
   const value = String(model || '').trim().toLowerCase();
-  return /^gpt-5(?:[.-]|$)/.test(value) && !/(?:chat|search)/.test(value);
+  const supported = /^gpt-5(?:[.-]|$)/.test(value)
+    || /^gpt-6-luna(?:[.-]|$)/.test(value);
+  return supported && !/(?:chat|search)/.test(value);
 }
 
 export function resolveOpenAiWebSearchMode({ forceSearch = false, configuredMode = '' } = {}) {

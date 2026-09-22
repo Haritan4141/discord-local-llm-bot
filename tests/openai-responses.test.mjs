@@ -68,9 +68,30 @@ test('buildOpenAiResponsesPayload enables optional and required hosted search', 
 test('modelSupportsOpenAiReasoning excludes chat and search models', () => {
   assert.equal(modelSupportsOpenAiReasoning('gpt-5.4-nano'), true);
   assert.equal(modelSupportsOpenAiReasoning('gpt-5-nano'), true);
+  assert.equal(modelSupportsOpenAiReasoning('gpt-6-luna'), true);
   assert.equal(modelSupportsOpenAiReasoning('chat-latest'), false);
   assert.equal(modelSupportsOpenAiReasoning('gpt-5-search-api'), false);
   assert.equal(modelSupportsOpenAiReasoning('gpt-4.1-mini'), false);
+});
+
+test('gpt-6-luna uses low reasoning only when web search is available', () => {
+  const messages = [{ role: 'user', content: 'Hello' }];
+  const normal = buildOpenAiResponsesPayload(messages, {
+    model: 'gpt-6-luna', webSearch: 'off',
+  });
+  const auto = buildOpenAiResponsesPayload(messages, {
+    model: 'gpt-6-luna', webSearch: 'auto', maxToolCalls: 2,
+  });
+  const required = buildOpenAiResponsesPayload(messages, {
+    model: 'gpt-6-luna', webSearch: 'required', maxToolCalls: 2,
+  });
+
+  assert.equal(normal.reasoning, undefined);
+  assert.equal(normal.tools, undefined);
+  assert.deepEqual(auto.reasoning, { effort: 'low' });
+  assert.equal(auto.tool_choice, 'auto');
+  assert.deepEqual(required.reasoning, { effort: 'low' });
+  assert.equal(required.tool_choice, 'required');
 });
 
 test('resolveOpenAiWebSearchMode preserves manual, auto, and forced search semantics', () => {
