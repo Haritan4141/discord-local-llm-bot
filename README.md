@@ -96,7 +96,7 @@ OpenAI の設定例:
 ```env
 LLM_PROVIDER=openai
 LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-5.4-nano
+LLM_MODEL=gpt-6-luna
 LLM_API_KEY=sk-proj-...
 WEB_SEARCH_MODE=auto
 OPENAI_WEB_SEARCH_MAX_TOOL_CALLS=2
@@ -109,6 +109,8 @@ OPENAI_IMAGE_SIZE=1024x1024
 ```
 
 以前の設定が `LLM_PROVIDER=custom` でも、`LLM_BASE_URL=https://api.openai.com/v1` なら OpenAI Responses API を自動判定します。OpenAI Provider では `OLLAMA_WEB_API_KEY` は不要です。`/webchat` は検索必須、`auto` の通常チャットは検索任意として OpenAI に送信され、回答末尾には引用元 URL、Web 検索回数、参照 URL 数、推論トークン数が表示されます。Web 検索回数は Responses API の `search` アクション数で、引用元 URL 数とは一致しません。内蔵 Web ツールの呼び出しは既定で 1 回の回答につき最大 2 回、Sources URL の表示は既定で 1 件です。
+GPT-6 Lunaでは、Web検索ツールを渡す `/webchat` と `WEB_SEARCH_MODE=auto` の通常チャットだけ推論 effort を `low` にします。検索ツールを渡さない応答はモデル既定の推論 effort です。`auto` では実際に検索する前に推論設定を決めるため、結果として検索しなかった応答も `low` になります。
+`LLM_MODEL` と `LLM_API_KEY` は稼働中プロセスだけでなく `.env` に保存してください。稼働中Botが環境変数を保持していても、再起動時に同じ設定を復元できるとは限りません。
 - `SD_WEBUI_URL` と `SD_*` (`/draw` 用)
 - `SD_PROMPT_TRANSLATE` と `SD_PROMPT_TRANSLATE_MODEL` (`/draw` の日本語プロンプト翻訳用)
 - `MUSIC_BACKEND` (`comfyui` または `ace`)
