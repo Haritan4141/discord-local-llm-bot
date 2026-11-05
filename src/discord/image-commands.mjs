@@ -80,7 +80,17 @@ export function buildDrawCommand() {
     ).addBooleanOption(option => option
       .setName("auto_reference")
       .setDescription("登録名をpromptから自動参照（既定true、手動reference優先、falseで無効・OpenAI only）")
-      .setRequired(false));
+      .setRequired(false))
+    .addStringOption(option => option
+      .setName("format").setDescription("出力形式（既定png、gifはGPT Image 2.6の新規生成専用）")
+      .addChoices({ name: "png", value: "png" }, { name: "gif", value: "gif" })
+      .setRequired(false))
+    .addIntegerOption(option => option
+      .setName("frame_count").setDescription("GIFのフレーム数（2〜64、既定9）")
+      .setMinValue(2).setMaxValue(64).setRequired(false))
+    .addIntegerOption(option => option
+      .setName("frame_duration_ms").setDescription("GIFの1フレームの表示時間ms（20〜2000、10ms単位に丸め、既定200）")
+      .setMinValue(20).setMaxValue(2000).setRequired(false));
 }
 
 export function buildReferenceCommand() {

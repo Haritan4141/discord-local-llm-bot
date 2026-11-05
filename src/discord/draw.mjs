@@ -1,7 +1,14 @@
 import { AttachmentBuilder } from 'discord.js';
 import * as runtimeConfig from '../config.mjs';
 import { translatePromptForSd, sdTxt2Img } from '../sd/draw.mjs';
-import { formatOpenAiImageCompletion, generateOpenAiImages, resolveOpenAiImageSize } from '../image/openai.mjs';
+import {
+  assertAnimatedGif,
+  assertOpenAiGifModel,
+  formatOpenAiImageCompletion,
+  generateOpenAiImages,
+  resolveOpenAiImageOutput,
+  resolveOpenAiImageSize,
+} from '../image/openai.mjs';
 import { resolveOpenAiImageModel } from '../image/openai-models.mjs';
 import { assertReferenceImageCount, fetchReferenceImage } from '../image/reference-images.mjs';
 import { DRAW_REFERENCE_OPTION_NAMES, addReferenceProfileLabels } from '../image/draw-references.mjs';
@@ -44,9 +51,12 @@ export function createDrawHandler({
       .filter(name => name != null);
     const modelOpt = interaction.options.getString('model');
     const autoReferenceOpt = interaction.options.getBoolean('auto_reference');
+    const formatOpt = interaction.options.getString('format');
+    const frameCountOpt = interaction.options.getInteger('frame_count');
+    const frameDurationOpt = interaction.options.getInteger('frame_duration_ms');
 
-    if (config.IMAGE_PROVIDER_MODE !== 'openai' && (image || referenceNames.length || modelOpt != null || autoReferenceOpt != null)) {
-      await interaction.reply('image / reference～reference8 / model (auto・flare・sunburst) / auto_reference は現在 OpenAI image provider のみ対応しています。');
+    if (config.IMAGE_PROVIDER_MODE !== 'openai' && (image || referenceNames.length || modelOpt != null || autoReferenceOpt != null || formatOpt != null || frameCountOpt != null || frameDurationOpt != null)) {
+      await interaction.reply('image / reference～reference8 / model (auto・flare・sunburst) / auto_reference / format / frame_count / frame_duration_ms は現在 OpenAI image provider のみ対応しています。');
       return;
     }
 
@@ -56,17 +66,27 @@ export function createDrawHandler({
       const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
       if (config.IMAGE_PROVIDER_MODE === 'openai') {
+        const output = resolveOpenAiImageOutput({
+          format: formatOpt ?? 'png', frameCount: frameCountOpt, frameDurationMs: frameDurationOpt,
+        });
         const size = resolveOpenAiImageSize({
           width,
           height,
           configuredSize: config.OPENAI_IMAGE_SIZE_VALUE,
+          format: output.format,
         });
         const finalBatch = clamp(Number.isFinite(batchOpt) ? batchOpt : 1, 1, 4);
+        if (output.format === 'gif' && (image || referenceNames.length)) {
+          throw new Error('GIF生成は新規生成専用です。image / reference～reference8 を外してください。');
+        }
         let automaticReferences = false;
         if (!referenceNames.length && autoReferenceOpt !== false) {
           const profiles = detectReferenceProfiles(prompt, await referenceStore.list());
           referenceNames = profiles.map(profile => profile.displayName);
           automaticReferences = referenceNames.length > 0;
+        }
+        if (output.format === 'gif' && referenceNames.length) {
+          throw new Error('GIF生成は参照画像に対応していません。登録名が自動参照の対象です。auto_reference:false で参照せずに新規生成できます。');
         }
         const references = [];
         const referenceGroups = [];
@@ -86,6 +106,7 @@ export function createDrawHandler({
           referenceCount: references.length,
           models: config.OPENAI_IMAGE_MODELS,
         });
+        if (output.format === 'gif') assertOpenAiGifModel(model);
         const result = await generateImages({
           url: config.OPENAI_IMAGE_GENERATIONS_URL,
           editsUrl: config.OPENAI_IMAGE_EDITS_URL,
@@ -96,6 +117,7 @@ export function createDrawHandler({
           quality: config.OPENAI_IMAGE_QUALITY_VALUE,
           count: finalBatch,
           references: preparedReferences,
+          ...output,
         });
 
         if (!result.images.length) {
@@ -103,21 +125,26 @@ export function createDrawHandler({
           return;
         }
 
-        const files = result.images.map((b64, idx) => {
+        const configuredLimit = config.DISCORD_MAX_ATTACHMENT_BYTES || 20 * 1024 * 1024;
+        const discordLimit = interaction.attachmentSizeLimit > 0 ? interaction.attachmentSizeLimit : 20 * 1024 * 1024;
+        const attachmentLimit = Math.min(configuredLimit, discordLimit);
+        const files = await Promise.all(result.images.map(async (b64, idx) => {
           const buf = Buffer.from(b64, 'base64');
-          if (buf.length > config.DISCORD_MAX_ATTACHMENT_BYTES) {
+          if (buf.length > attachmentLimit) {
             throw new Error(
-              `生成画像 ${idx + 1} が Discord の送信上限 ${Math.floor(config.DISCORD_MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB を超えました。` +
-              '画像サイズまたは品質を下げてください。',
+              `生成画像 ${idx + 1} が Discord の送信上限 ${Number((attachmentLimit / 1024 / 1024).toFixed(2))}MiB を超えました。` +
+              (output.format === 'gif' ? 'フレーム数（frame_count）、画像サイズまたは品質を下げてください。' : '画像サイズまたは品質を下げてください。'),
             );
           }
-          return new AttachmentBuilder(buf, { name: `openai_draw_${Date.now()}_${idx + 1}.png` });
-        });
+          if (output.format === 'gif') await assertAnimatedGif(buf);
+          return new AttachmentBuilder(buf, { name: `openai_draw_${Date.now()}_${idx + 1}.${output.format}` });
+        }));
 
         const usage = result.usage;
         logger.log(
           `[openai-image] model=${model} mode=${mode} references=${references.length} size=${size} quality=${config.OPENAI_IMAGE_QUALITY_VALUE}` +
           ` reference_selection=${automaticReferences ? 'automatic' : referenceNames.length ? 'manual' : 'none'}` +
+          (output.format === 'gif' ? ` format=gif frame_count=${output.frameCount} frame_duration_ms=${output.frameDurationMs}` : '') +
           ` images=${files.length} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens}` +
           ` total_tokens=${usage.totalTokens}`,
           ...(referenceDimensions.length ? [`reference_input=${referenceDimensions.join(',')}`] : []),
@@ -134,6 +161,7 @@ export function createDrawHandler({
           referenceDimensions,
           automaticReferences,
           usage,
+          ...output,
         });
         await interaction.editReply({
           content,

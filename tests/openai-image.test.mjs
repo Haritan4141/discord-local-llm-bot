@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildOpenAiImagePayload,
+  buildOpenAiImageEditForm,
   formatOpenAiImageCompletion,
   generateOpenAiImages,
   parseOpenAiImageResult,
   resolveOpenAiImageSize,
+  resolveOpenAiImageOutput,
   validateOpenAiImageDimensions,
 } from '../src/image/openai.mjs';
 
@@ -23,6 +25,30 @@ test('formatOpenAiImageCompletion shows the prompt above generation details', ()
       '生成完了 | provider: OpenAI | model: gpt-image-2 | size: 1024x1024 | quality: low | images: 1',
     ].join('\n'),
   );
+});
+
+test('GIF output uses GIF-only animation controls, auto sizing and GPT Image 2.6', () => {
+  assert.deepEqual(resolveOpenAiImageOutput({ format: 'gif' }), { format: 'gif', frameCount: 9, frameDurationMs: 200 });
+  assert.equal(resolveOpenAiImageSize({ format: 'gif', configuredSize: '1024x1024' }), 'auto');
+  assert.equal(resolveOpenAiImageSize({ format: 'gif', width: 512, height: 512 }), '512x512');
+  const options = { model: 'gpt-image-2.6-flare', prompt: 'A cat waves in a seamless loop', size: 'auto', format: 'gif' };
+  assert.deepEqual(buildOpenAiImagePayload(options), {
+    model: options.model, prompt: options.prompt, size: 'auto', quality: 'low', n: 1,
+    output_format: 'gif', frame_count: 9, frame_duration_ms: 200,
+  });
+  assert.equal(buildOpenAiImagePayload({ ...options, frameCount: 64, frameDurationMs: 123 }).frame_duration_ms, 120);
+  for (const values of [{ frameCount: 1 }, { frameCount: 65 }, { frameCount: 2.5 }, { frameDurationMs: 19 }, { frameDurationMs: 2001 }]) {
+    assert.throws(() => buildOpenAiImagePayload({ ...options, ...values }), /frame_count|frame_duration_ms/);
+  }
+  for (const values of [{ frameCount: 9 }, { frameDurationMs: 200 }]) {
+    assert.throws(() => buildOpenAiImagePayload({ ...options, format: 'png', ...values }), /format:gif/);
+  }
+  assert.throws(() => buildOpenAiImagePayload({ ...options, model: 'gpt-image-2.5-flare' }), /gpt-image-2.6/);
+  assert.throws(() => buildOpenAiImagePayload({ ...options, format: 'svg' }), /png \/ gif/);
+  assert.throws(() => buildOpenAiImageEditForm({ ...options, references: [{}] }), /新規生成専用/);
+  for (const values of [{ width: 512 }, { width: 511, height: 512 }, { width: 4096, height: 512 }]) {
+    assert.throws(() => resolveOpenAiImageSize({ format: 'gif', ...values }), /16px/);
+  }
 });
 
 test('validateOpenAiImageDimensions follows gpt-image-2 constraints', () => {

@@ -95,6 +95,7 @@
 - OpenAI drawは手動reference欄がすべて未指定ならprompt中の登録displayNameを自動参照。auto_reference:falseで無効化。手動指定時は自動追加せず、否定文の意味解釈や未登録別名の推測は行わない。画像上限・原本保持・送信時768px縮小を維持する
 - OpenAI参照画像は添付→reference→reference2～reference8の順で全画像合計8枚まで。1欄1登録名で空白分割しない。PNG/JPEG/WebP・1枚20 MiBまで。SDでは image / reference～reference8 / model（autoも含む）は未対応
 - `OPENAI_IMAGE_MODEL_FLARE` / `OPENAI_IMAGE_MODEL_SUNBURST` → 旧 `OPENAI_IMAGE_MODEL` → 各既定モデルの順で解決する
+- `/draw format:gif` はGPT Image 2.6の新規生成のみ。frame_count=2〜64（既定9）、frame_duration_ms=20〜2000（既定200、10ms単位丸め）。GIFサイズ未指定はauto。image / 手動・自動referenceとの併用はAPI前に拒否し、自動参照はauto_reference:falseで無効化できる。複数フレームを検証し、GIFを再エンコードせず送る。Discord interactionの添付上限を尊重する
 - `OPENAI_IMAGE_REFERENCE_MAX_EDGE` は送信参照画像の長辺上限（256〜2048、既定768）。生成画像のサイズ・品質とは別。元画像の再保存や自動削除は禁止。縮小はsharpで行い、4,000万画素超過・デコード失敗時はAPI呼び出し前に終了する
 - `CHANNEL_IDS` 未設定時は起動時にエラー
 - `LLM_*` が優先され、旧 `OLLAMA_URL` / `OLLAMA_MODEL` は互換 fallback として扱う

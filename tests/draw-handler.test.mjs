@@ -384,6 +384,7 @@ test('SD rejects all explicitly supplied OpenAI options including auto before do
       ...Array.from({ length: 7 }, (_, index) => ({ [`reference${index + 2}`]: 'Akaya' })),
       { model: 'auto' }, { model: 'flare' }, { model: 'sunburst' },
       { auto_reference: true }, { auto_reference: false },
+      { format: 'png' }, { format: 'gif' }, { frame_count: 9 }, { frame_duration_ms: 200 },
     ]) {
       const i = interaction({ prompt: 'cat', ...values });
       const forbidden = async () => { assert.fail('must not contact providers or storage'); };
@@ -394,6 +395,110 @@ test('SD rejects all explicitly supplied OpenAI options including auto before do
       assert.equal(i.deferred, undefined);
       assert.match(i.replies.at(-1), /OpenAI image provider のみ対応/);
     }
+  }
+});
+
+// Two distinct frames, 200ms per frame, loop forever. Keep original bytes on upload.
+const animatedGif = Buffer.from('R0lGODlhEAAQAIAAAExpcR4eHiH/C05FVFNDQVBFMi4wAwEAAAAh+QQFFAAAACwAAAAAEAAQAAACDoyPqcvtD6OctNqLsz4FACH5BAUUAAAALAAAAAAQABAAgExpcdzc3AIOjI+py+0Po5y02ouzPgUAOw==', 'base64');
+const gifConfig = { ...config, OPENAI_IMAGE_MODELS: {
+  flare: 'gpt-image-2.6-flare', sunburst: 'gpt-image-2.6-sunburst',
+} };
+
+test('/draw GIF goes through the real API builder and uploads animated bytes as .gif', async () => {
+  const { generateOpenAiImages } = await import('../src/image/openai.mjs');
+  for (const values of [
+    { format: 'gif' },
+    { format: 'gif', width: 512, height: 512, frame_count: 2, frame_duration_ms: 123, model: 'sunburst', batch: 2 },
+  ]) {
+    const i = interaction({ prompt: '白い猫が手を振るループ', ...values });
+    let calls = 0;
+    await createTestDrawHandler({ config: gifConfig, logger,
+      generateImages: args => generateOpenAiImages({ ...args, fetchImpl: async (url, request) => {
+        calls++;
+        const payload = JSON.parse(request.body);
+        assert.equal(url, config.OPENAI_IMAGE_GENERATIONS_URL);
+        assert.equal(payload.model, `gpt-image-2.6-${values.model || 'flare'}`);
+        assert.equal(payload.output_format, 'gif');
+        assert.equal(payload.frame_count, values.frame_count || 9);
+        assert.equal(payload.frame_duration_ms, values.frame_duration_ms ? 120 : 200);
+        assert.equal(payload.size, values.width ? '512x512' : 'auto');
+        assert.equal(payload.n, values.batch || 1);
+        return new Response(JSON.stringify({ data: Array(payload.n).fill({ b64_json: animatedGif.toString('base64') }) }));
+      } }),
+    })(i);
+    assert.equal(calls, 1);
+    const reply = i.replies.at(-1);
+    assert.equal(reply.files.length, values.batch || 1);
+    for (const file of reply.files) {
+      assert.match(file.name, /\.gif$/);
+      assert.deepEqual(file.attachment, animatedGif);
+      const metadata = await sharp(file.attachment, { animated: true }).metadata();
+      assert.equal(metadata.pages, 2);
+      assert.deepEqual(metadata.delay, [200, 200]);
+      assert.equal(metadata.loop, 0);
+    }
+    assert.match(reply.content, /format: gif.*frames:.*frame duration:.*loop:/);
+    assert.deepEqual(reply.allowedMentions, { parse: [] });
+  }
+});
+
+test('/draw GIF rejects explicit and automatic references before downloading, loading or generating', async () => {
+  for (const values of [{ image: {} }, { reference8: 'はりたん' }, {}]) {
+    const i = interaction({ prompt: 'はりたんが踊る', format: 'gif', ...values });
+    const forbidden = async () => assert.fail('must not download, load references, or contact the API');
+    await createTestDrawHandler({ config: gifConfig, logger,
+      referenceStore: { list: async () => [{ displayName: 'はりたん', slug: 'haritan' }], loadImages: forbidden },
+      fetchImage: forbidden, generateImages: forbidden,
+    })(i);
+    assert.equal(i.replies.at(-1).files, undefined);
+    assert.match(i.replies.at(-1).content, /新規生成専用|auto_reference:false/);
+  }
+  const i = interaction({ prompt: 'はりたんが踊る', format: 'gif', auto_reference: false });
+  let calls = 0;
+  await createTestDrawHandler({ config: gifConfig, logger,
+    referenceStore: { list: async () => assert.fail('opt-out must not list profiles') },
+    generateImages: async args => { calls++; assert.deepEqual(args.references, []); return { images: [animatedGif.toString('base64')], usage: {} }; },
+  })(i);
+  assert.equal(calls, 1);
+  assert.match(i.replies.at(-1).files[0].name, /\.gif$/);
+});
+
+test('/draw rejects invalid GIF settings and unsupported models before generation', async () => {
+  for (const values of [
+    { format: 'gif', frame_count: 65 }, { format: 'gif', frame_duration_ms: 0 },
+    { frame_count: 9 }, { format: 'png', frame_duration_ms: 200 },
+    { format: 'gif', width: 512 }, { format: 'gif', width: 513, height: 512 },
+  ]) {
+    const i = interaction({ prompt: 'cat', ...values });
+    await createTestDrawHandler({ config: gifConfig, logger,
+      generateImages: async () => assert.fail('invalid options must not call the API'),
+    })(i);
+    assert.match(i.replies.at(-1).content, /frame_|16px/);
+  }
+  const i = interaction({ prompt: 'cat', format: 'gif' });
+  await createTestDrawHandler({ config, logger,
+    generateImages: async () => assert.fail('2.5 must not be used for GIF'),
+  })(i);
+  assert.match(i.replies.at(-1).content, /gpt-image-2.6/);
+});
+
+test('/draw GIF refuses non-animated results and honors Discord interaction upload limits', async () => {
+  for (const bytes of [png, await sharp(png).gif().toBuffer(), Buffer.from('GIF89a')]) {
+    const i = interaction({ prompt: 'cat', format: 'gif' });
+    await createTestDrawHandler({ config: gifConfig, logger,
+      generateImages: async () => ({ images: [bytes.toString('base64')], usage: {} }),
+    })(i);
+    assert.equal(i.replies.at(-1).files, undefined);
+    assert.match(i.replies.at(-1).content, /有効なアニメーションGIF/);
+  }
+  for (const smallerLimit of ['interaction', 'config']) {
+    const i = interaction({ prompt: 'cat', format: 'gif' });
+    i.attachmentSizeLimit = smallerLimit === 'interaction' ? animatedGif.length - 1 : animatedGif.length + 1;
+    await createTestDrawHandler({ config: { ...gifConfig, DISCORD_MAX_ATTACHMENT_BYTES: smallerLimit === 'config' ? animatedGif.length - 1 : 1024 }, logger,
+      generateImages: async () => ({ images: [animatedGif.toString('base64')], usage: {} }),
+    })(i);
+    assert.equal(i.replies.at(-1).files, undefined);
+    assert.match(i.replies.at(-1).content, /送信上限.*frame_count/);
   }
 });
 
