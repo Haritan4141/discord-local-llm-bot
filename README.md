@@ -356,9 +356,31 @@ OpenAIの`/draw`は、reference欄がすべて未指定ならprompt中の登録�
 
 完了返信には prompt、provider、実モデル、選択 mode、size、quality、生成枚数、参照画像総数、usage（input_text / input_image / output / total）、参照画像の実際の送信解像度（reference input）を表示します。自動検出時は1人でも「自動参照」に登録名を表示し、手動の複数profileでは登録名一覧を表示します。APIが返さない使用量は0として表示します。
 
+### `/draw` でアニメーションGIFを生成する
+
+GPT Image 2.6 の新規生成では `format:gif` を指定できます。形式を省略した場合は従来どおりPNGです。使用するFlare / Sunburstの設定を `gpt-image-2.6-flare` / `gpt-image-2.6-sunburst` にしてください。旧モデル設定のままGIFを指定すると、APIを呼ぶ前に設定の案内を返します。
+
+```text
+/draw prompt:"白い猫が手を振る、最初の姿勢へ戻る滑らかなループ" format:gif
+/draw prompt:"蝶が羽ばたくループ" format:gif frame_count:12 frame_duration_ms:100 width:512 height:512
+```
+
+- `frame_count`: 2〜64フレーム、既定9。
+- `frame_duration_ms`: 1フレーム20〜2000ms、既定200。10ms単位に丸めます。既定値では1周約1.8秒です。
+- GIFのサイズは `width` / `height` の両方を省略するとAPIの `auto` を使用します。指定するときは両方を16px単位で指定してください。PNG用の `.env` の既定サイズはGIFには適用しません。
+- `batch` は1〜4です。フレーム数・サイズ・枚数の組合せでAPIの総画素数上限に達した場合は、それらを減らしてください。
+
+GIF出力は `/v1/images/generations` 専用で、`image` / `reference`〜`reference8` と併用できません。登録名が自動参照に当たった場合も生成前に案内を返します。その名前を含む文章だけで新規生成する場合は `auto_reference:false` を指定してください。画像を参照せずに生成するため、登録画像の外見は引き継がれません。
+
+生成結果は複数フレームのGIFであることを検証し、アニメーションを保った `.gif` 添付として送信します。完了返信にはフレーム数・フレーム表示時間・1周の目安も表示します。Discordがコマンド実行時に通知する添付上限とBotの容量上限の小さい方を使用し、超過時はフレーム数・サイズ・品質を下げる案内を返します。GIFの自動再生は閲覧者側のDiscord設定にも依存します。
+
+更新を反映したら、GUIの `Register Guild Commands` / `Register Global Commands` または `node register-commands.mjs --guild|--global` で `/draw` を再登録してからBotを起動してください。
+
+仕様は [OpenAIのGIF生成ガイド](https://developers.openai.com/api/docs/guides/image-generation?generate-images-api=responses#generate-animated-gif-output) と [Discordのファイル添付仕様](https://docs.discord.com/developers/reference#uploading-files) を参照してください。
+
 料金はモデル・品質・サイズ・参照画像・生成枚数で変わります。最新の仕様は [OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、料金は [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) を確認してください。
 
-`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference`～`reference8` / `model`（auto を含む）/ `auto_reference`を指定すると、OpenAI 専用である旨を返して生成を実行しません。
+`IMAGE_PROVIDER=stable-diffusion` の場合、数値オプションは事故防止のためにクランプされます: `width` / `height` は64〜2048、`steps` は1〜150、`cfg` は1〜30、`batch` は1〜4。 `sd` 別名も従来どおり使用できます。`image` / `reference`～`reference8` / `model`（auto を含む）/ `auto_reference` / `format` / `frame_count` / `frame_duration_ms`を指定すると、OpenAI 専用である旨を返して生成を実行しません。
 
 日本語プロンプトを英語に翻訳して SD WebUI に送る場合:
 

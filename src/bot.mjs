@@ -176,6 +176,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           '• `/status` : Botの状態確認',
           `• \`/draw\` : ${IMAGE_PROVIDER_MODE === 'openai' ? 'OpenAI Image API' : 'Stable Diffusion WebUI'} で画像生成`,
           ...(IMAGE_PROVIDER_MODE === 'openai' ? ['  登録名をpromptから自動参照。手動reference優先、`auto_reference:false`でOFF。'] : []),
+          ...(IMAGE_PROVIDER_MODE === 'openai' ? ['  `format:gif`でアニメーション生成（GPT Image 2.6・参照画像なし）。`frame_count` / `frame_duration_ms`で調整。'] : []),
           '• `/reference add|list|show|delete` : 参照画像を保存・管理',
           '• `/music` : ComfyUI で音楽生成',
           '• `/chat <message> <image>` : LLMと会話',
